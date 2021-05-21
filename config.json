@@ -1,0 +1,10 @@
+{
+	"Endpoint": "https://www.okex.com/",
+	"WSEndpoint":"wss://ws.okex.com:8443/ws/v5/private",
+	"ApiKey":"",
+	"SecretKey":"",
+	"Passphrase":"",
+	"TimeoutSecond": 45,
+	"IsPrint": false,
+	"I18n":"en_US"
+}
