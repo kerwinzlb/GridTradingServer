@@ -13,8 +13,8 @@ import (
 	"io/ioutil"
 
 	"github.com/gorilla/websocket"
+	"github.com/kerwinzlb/GridTradingServer/log"
 
-	"log"
 	"os"
 	"os/signal"
 	"runtime/debug"
@@ -44,15 +44,15 @@ type OKWSAgent struct {
 
 func (a *OKWSAgent) Start(config *Config) error {
 	a.baseUrl = config.WSEndpoint
-	log.Printf("Connecting to %s", a.baseUrl)
+	log.Debugf("Connecting to %s", a.baseUrl)
 	c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
 
 	if err != nil {
-		log.Fatalf("dial:%+v", err)
+		log.Debugf("dial:%+v", err)
 		return err
 	} else {
 		if config.IsPrint {
-			log.Printf("Connected to %s", a.baseUrl)
+			log.Debugf("Connected to %s", a.baseUrl)
 		}
 		a.conn = c
 		a.config = config
@@ -89,7 +89,7 @@ func (a *OKWSAgent) Subscribe(channel, instType string, cb ReceivedDataCallback)
 
 	msg, err := Struct2JsonString(bo)
 	if a.config.IsPrint {
-		log.Printf("Send Msg: %s", msg)
+		log.Debugf("Send Msg: %s", msg)
 	}
 	if err := a.conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
 		return err
@@ -123,7 +123,7 @@ func (a *OKWSAgent) UnSubscribe(channel, instType string) error {
 
 	msg, err := Struct2JsonString(bo)
 	if a.config.IsPrint {
-		log.Printf("Send Msg: %s", msg)
+		log.Debugf("Send Msg: %s", msg)
 	}
 	if err := a.conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
 		return err
@@ -161,7 +161,7 @@ func (a *OKWSAgent) keepalive() {
 func (a *OKWSAgent) Stop() error {
 	defer func() {
 		a := recover()
-		log.Printf("Stop End. Recover msg: %+v", a)
+		log.Debugf("Stop End. Recover msg: %+v", a)
 	}()
 
 	close(a.stopCh)
@@ -170,7 +170,7 @@ func (a *OKWSAgent) Stop() error {
 
 func (a *OKWSAgent) finalize() error {
 	defer func() {
-		log.Printf("Finalize End. Connection to WebSocket is closed.")
+		log.Debugf("Finalize End. Connection to WebSocket is closed.")
 	}()
 
 	select {
@@ -189,7 +189,7 @@ func (a *OKWSAgent) finalize() error {
 
 func (a *OKWSAgent) ping() {
 	msg := "ping"
-	//log.Printf("Send Msg: %s", msg)
+	// log.Debugf("Send Msg: %s", msg)
 	a.conn.WriteMessage(websocket.TextMessage, []byte(msg))
 }
 
@@ -201,7 +201,7 @@ func (a *OKWSAgent) GzipDecode(in []byte) ([]byte, error) {
 }
 
 func (a *OKWSAgent) handleErrResponse(r interface{}) error {
-	log.Printf("handleErrResponse %+v \n", r)
+	log.Debugf("handleErrResponse %+v \n", r)
 	return nil
 }
 
@@ -238,13 +238,13 @@ func (a *OKWSAgent) handleTableResponse(r interface{}) error {
 func (a *OKWSAgent) work() {
 	defer func() {
 		a := recover()
-		log.Printf("Work End. Recover msg: %+v", a)
+		log.Debugf("Work End. Recover msg: %+v", a)
 		debug.PrintStack()
 	}()
 
 	defer a.Stop()
 
-	ticker := time.NewTicker(29 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -260,8 +260,15 @@ func (a *OKWSAgent) work() {
 		case <-a.signalCh:
 			break
 		case err := <-a.errCh:
-			DefaultDataCallBack(err)
-			break
+			log.Debug("work() a.errCh", err)
+			c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
+			if err != nil {
+				log.Debugf("dial:%+v", err)
+			} else {
+				a.conn = c
+				a.Login(a.config.ApiKey, a.config.Passphrase)
+				a.Subscribe(CHNL_OEDERS, "SPOT", nil)
+			}
 		case <-a.stopCh:
 			return
 
@@ -273,7 +280,7 @@ func (a *OKWSAgent) receive() {
 	defer func() {
 		a := recover()
 		if a != nil {
-			log.Printf("Receive End. Recover msg: %+v", a)
+			log.Debugf("Receive End. Recover msg: %+v", a)
 			debug.PrintStack()
 		}
 	}()
@@ -282,7 +289,6 @@ func (a *OKWSAgent) receive() {
 		messageType, message, err := a.conn.ReadMessage()
 		if err != nil {
 			a.errCh <- err
-			break
 		}
 		txtMsg := message
 		switch messageType {
@@ -294,10 +300,8 @@ func (a *OKWSAgent) receive() {
 		rsp, err := loadResponse(txtMsg)
 		if rsp != nil {
 			if a.config.IsPrint {
-				log.Printf("LoadedRep: %+v, err: %+v", rsp, err)
+				log.Debugf("LoadedRep: %+v, err: %+v", rsp, err)
 			}
-		} else {
-			log.Printf("TextMsg: %s", txtMsg)
 		}
 
 		if err != nil {
@@ -327,7 +331,7 @@ func (a *OKWSAgent) receive() {
 			if err == nil {
 				a.wsTbCh <- dtr
 			} else {
-				log.Printf("Failed to loadWSDepthTableResponse, dtr: %+v, err: %+v", dtr, err)
+				log.Debugf("Failed to loadWSDepthTableResponse, dtr: %+v, err: %+v", dtr, err)
 			}
 
 		case *WSTableResponse:

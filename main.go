@@ -32,7 +32,7 @@ func waitToExit(server *server.Server) {
 	for {
 		s := <-c
 		if s == syscall.SIGINT || s == syscall.SIGKILL || s == syscall.SIGTERM {
-			fmt.Println("get signal:", s)
+			log.Debug("get signal:", s)
 			server.Stop()
 			// os.Exit(1)
 		}

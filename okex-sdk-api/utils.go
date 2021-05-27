@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kerwinzlb/GridTradingServer/log"
 )
 
 /*
@@ -349,18 +351,18 @@ func StringToInt(arg string) int {
 }
 
 /*
-  call fmt.Println(...)
+  call log.Debug(...)
 */
 func FmtPrintln(flag string, info interface{}) {
 	fmt.Print(flag)
 	if info != nil {
 		jsonString, err := Struct2JsonString(info)
 		if err != nil {
-			fmt.Println(err)
+			log.Debug("Struct2JsonString", err)
 		}
-		fmt.Println(jsonString)
+		log.Debug(jsonString)
 	} else {
-		fmt.Println("{}")
+		log.Debug("{}")
 	}
 }
 

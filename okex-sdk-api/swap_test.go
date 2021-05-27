@@ -9,11 +9,13 @@ package okex
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"os"
 	"reflect"
 	"testing"
+
+	"github.com/kerwinzlb/GridTradingServer/log"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGetSwapInstrumentPosition(t *testing.T) {
@@ -280,5 +282,5 @@ func TestClient_SwapHistoricalFundingRate(t *testing.T) {
 func TestClient_reflect(t *testing.T) {
 	i := BasePlaceOrderInfo{}
 	tp := reflect.TypeOf(i)
-	fmt.Println(tp)
+	log.Debug(tp)
 }

@@ -14,6 +14,8 @@ import (
 	"hash/crc32"
 	"strconv"
 	"strings"
+
+	"github.com/kerwinzlb/GridTradingServer/log"
 )
 
 func subscribeOp(channel, instType string) (*map[string]interface{}, error) {
@@ -363,14 +365,14 @@ type ReceivedDataCallback func(interface{}) error
 func defaultPrintData(obj interface{}) error {
 	switch obj.(type) {
 	case string:
-		fmt.Println(obj)
+		log.Debug(obj.(string))
 	default:
 		msg, err := Struct2JsonString(obj)
 		if err != nil {
-			fmt.Println(err.Error())
+			log.Debug(err.Error())
 			return err
 		}
-		fmt.Println(msg)
+		log.Debug(msg)
 
 	}
 	return nil

@@ -2,7 +2,6 @@ package okex
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -84,7 +83,7 @@ func GetUserConfig(filepath string) (*Config, error) {
 		return nil, err
 	}
 
-	fmt.Println("Successfully Opened ", filepath)
+	log.Debug("Successfully Opened ", filepath)
 	// defer the closing of our jsonFile so that we can parse it later on
 	defer jsonFile.Close()
 

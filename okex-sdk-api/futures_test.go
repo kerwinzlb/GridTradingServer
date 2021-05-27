@@ -2,9 +2,11 @@ package okex
 
 import (
 	"fmt"
+	"testing"
+
+	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 const (
@@ -117,7 +119,7 @@ func TestGetFuturesInstrumentCandles(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	fmt.Println("Futures Instrument candles:")
+	log.Debug("Futures Instrument candles:")
 	for i, outLen := 0, len(candles); i < outLen; i++ {
 		candle := candles[i]
 		for j, inLen := 0, 7; j < inLen; j++ {
@@ -141,7 +143,7 @@ func TestGetFuturesInstrumentCandles(t *testing.T) {
 				fmt.Print(candle[j])
 			} else if j == 6 {
 				fmt.Print(" currency_volume:")
-				fmt.Println(candle[j])
+				log.Debug(candle[j])
 			}
 		}
 	}

@@ -3,12 +3,13 @@ package okex
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/kerwinzlb/GridTradingServer/log"
 )
 
 /*
@@ -138,13 +139,13 @@ func (client *Client) Request(method string, requestPath string,
 		return response, nil
 	} else if status >= 400 || status <= 500 {
 		errMsg := "Http error(400~500) result: status=" + IntToString(status) + ", message=" + message + ", body=" + responseBodyString
-		fmt.Println(errMsg)
+		log.Debug(errMsg)
 		if body != nil {
 			err := errors.New(errMsg)
 			return response, err
 		}
 	} else {
-		fmt.Println("Http error result: status=" + IntToString(status) + ", message=" + message + ", body=" + responseBodyString)
+		log.Debug("Http error result: status=" + IntToString(status) + ", message=" + message + ", body=" + responseBodyString)
 		return response, errors.New(message)
 	}
 	return response, nil
@@ -152,32 +153,32 @@ func (client *Client) Request(method string, requestPath string,
 
 func printRequest(config Config, request *http.Request, body string, preHash string) {
 	if config.SecretKey != "" {
-		fmt.Println("  Secret-Key: " + config.SecretKey)
+		log.Debug("  Secret-Key: " + config.SecretKey)
 	}
-	fmt.Println("  Request(" + IsoTime() + "):")
-	fmt.Println("\tUrl: " + request.URL.String())
-	fmt.Println("\tMethod: " + strings.ToUpper(request.Method))
+	log.Debug("  Request(" + IsoTime() + "):")
+	log.Debug("\tUrl: " + request.URL.String())
+	log.Debug("\tMethod: " + strings.ToUpper(request.Method))
 	if len(request.Header) > 0 {
-		fmt.Println("\tHeaders: ")
+		log.Debug("\tHeaders: ")
 		for k, v := range request.Header {
 			if strings.Contains(k, "Ok-") {
 				k = strings.ToUpper(k)
 			}
-			fmt.Println("\t\t" + k + ": " + v[0])
+			log.Debug("\t\t" + k + ": " + v[0])
 		}
 	}
-	fmt.Println("\tBody: " + body)
+	log.Debug("\tBody: " + body)
 	if preHash != "" {
-		fmt.Println("  PreHash: " + preHash)
+		log.Debug("  PreHash: " + preHash)
 	}
 }
 
 func printResponse(status int, message string, body []byte) {
-	fmt.Println("  Response(" + IsoTime() + "):")
+	log.Debug("  Response(" + IsoTime() + "):")
 	statusString := strconv.Itoa(status)
 	message = strings.Replace(message, statusString, "", -1)
 	message = strings.Trim(message, " ")
-	fmt.Println("\tStatus: " + statusString)
-	fmt.Println("\tMessage: " + message)
-	fmt.Println("\tBody: " + string(body))
+	log.Debug("\tStatus: " + statusString)
+	log.Debug("\tMessage: " + message)
+	log.Debug("\tBody: " + string(body))
 }
