@@ -7,16 +7,12 @@ import (
 	"path/filepath"
 	"sort"
 	"syscall"
-	"time"
 
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
+	"github.com/kerwinzlb/GridTradingServer/server"
 	"github.com/kerwinzlb/GridTradingServer/utils"
 	"gopkg.in/urfave/cli.v1"
-)
-
-const (
-	clientIdentifier = "moac" // Client identifier to advertise over the network
 )
 
 var (
@@ -30,115 +26,35 @@ var (
 	}
 )
 
-func waitToExit() {
+func waitToExit(server *server.Server) {
 	c := make(chan os.Signal)
 	signal.Notify(c)
 	for {
 		s := <-c
 		if s == syscall.SIGINT || s == syscall.SIGKILL || s == syscall.SIGTERM {
 			fmt.Println("get signal:", s)
-			os.Exit(1)
+			server.Stop()
+			// os.Exit(1)
 		}
 	}
 }
 
 func gridTradingServer(ctx *cli.Context) {
-	go waitToExit()
 	go initLog(ctx)
 	configFilePath := ctx.GlobalString(utils.ConfigDirFlag.Name)
 	config, err := okex.GetConfiguration(configFilePath)
 	if err != nil {
-		fmt.Errorf("can not get runnning directory\n")
+		fmt.Errorf("GetConfiguration error%v\n", err)
 		return
 	}
-	// var config okex.Config
-	// config.Endpoint = "https://www.okex.com/"
-	// config.WSEndpoint = "wss://ws.okex.com:8443/ws/v5/private"
-	// config.ApiKey = "bd954f95-f255-4963-b931-49eb998d8bea"
-	// config.SecretKey = "A2249B004D0A85893FC4D51147CEA6AE"
-	// config.Passphrase = "ZHou0037Bo228"
-	// config.TimeoutSecond = 45
-	// config.IsPrint = false
-	// config.I18n = okex.ENGLISH
-	// client := okex.NewClient(*config)
-
-	// acc, err := client.GetAccountBalance("")
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "GetAccountBalance = ", acc)
-	// fmt.Println("=================================================================================")
-
-	// tics, err := client.GetMarketTickers("SPOT", "")
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "GetMarketTickers = ", tics)
-	// fmt.Println("=================================================================================")
-
-	// tic, err := client.GetMarketTicker("ETH-USDT")
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "GetMarketTicker = ", tic)
-	// fmt.Println("=================================================================================")
-
-	// req := okex.NewParams()
-	// req["instId"] = "ETH-USDT"
-	// req["tdMode"] = "cash"
-	// req["side"] = "buy"
-	// req["ordType"] = "post_only"
-	// req["px"] = "100"
-	// req["sz"] = "1"
-	// res, err := client.PostTradeOrder(&req)
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "PostTradeOrder = ", res)
-	// fmt.Println("=================================================================================")
-
-	// req := okex.NewParams()
-	// req["instId"] = "ETH-USDT"
-	// req["tdMode"] = "cash"
-	// req["side"] = "buy"
-	// req["ordType"] = "post_only"
-	// req["px"] = "1000"
-	// req["sz"] = "1"
-	// reqs := make([]map[string]string, 0)
-	// reqs = append(reqs, req)
-	// reqs = append(reqs, req)
-	// res, err := client.PostTradeBatchOrders(&reqs)
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "PostTradeBatchOrders = ", res)
-	// fmt.Println("=================================================================================")
-
-	// res, err := client.PostTradeCancelOrder("ETH-USDT", "313382483228250114", "")
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "PostTradeCancelOrder = ", res)
-	// fmt.Println("=================================================================================")
-
-	// req := okex.NewParams()
-	// req["instId"] = "ETH-USDT"
-	// req["ordId"] = "313387643539181569"
-	// reqs := make([]map[string]string, 0)
-	// reqs = append(reqs, req)
-	// req = okex.NewParams()
-	// req["instId"] = "ETH-USDT"
-	// req["ordId"] = "313393969610772484"
-	// reqs = append(reqs, req)
-	// res, err := client.PostTradeCancelBatchOrders(&reqs)
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "PostTradeCancelBatchOrders = ", res)
-	// fmt.Println("=================================================================================")
-
-	// trdp, err := client.GetTradeOrdersPending(okex.NewReqParams())
-	// fmt.Println("=================================================================================")
-	// fmt.Println("err = ", err, "GetTradeOrdersPending = ", trdp)
-	// fmt.Println("=================================================================================")
-
-	agent := new(okex.OKWSAgent)
-	agent.Start(config)
-
-	err = agent.Login(config.ApiKey, config.Passphrase)
-	fmt.Println("=================================================================================")
-	fmt.Println("err = ", err, "Login = ")
-	fmt.Println("=================================================================================")
-
-	agent.Subscribe(okex.CHNL_OEDERS, "SPOT", okex.DefaultDataCallBack)
-
-	time.Sleep(1 * time.Hour)
+	gridServer, err := server.New(config)
+	if err != nil {
+		fmt.Errorf("server.New error%v\n", err)
+		return
+	}
+	go waitToExit(gridServer)
+	gridServer.Start()
+	gridServer.Wait()
 }
 
 /*

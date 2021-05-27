@@ -318,33 +318,41 @@ func loadResponse(rspMsg []byte) (interface{}, error) {
 
 	//log.Printf("%s", rspMsg)
 
-	evtR := WSEventResponse{}
-	err := JsonBytes2Struct(rspMsg, &evtR)
-	if err == nil && evtR.Valid() {
-		return &evtR, nil
+	ord := WSOrdersResponse{}
+	err := JsonBytes2Struct(rspMsg, &ord)
+	if err == nil {
+		return &ord, nil
+	} else {
+		return nil, err
 	}
 
-	dtr := WSDepthTableResponse{}
-	err = JsonBytes2Struct(rspMsg, &dtr)
-	if err == nil && dtr.Valid() {
-		return &dtr, nil
-	}
+	// evtR := WSEventResponse{}
+	// err = JsonBytes2Struct(rspMsg, &evtR)
+	// if err == nil && evtR.Valid() {
+	// 	return &evtR, nil
+	// }
 
-	tr := WSTableResponse{}
-	err = JsonBytes2Struct(rspMsg, &tr)
-	if err == nil && tr.Valid() {
-		return &tr, nil
-	}
+	// dtr := WSDepthTableResponse{}
+	// err = JsonBytes2Struct(rspMsg, &dtr)
+	// if err == nil && dtr.Valid() {
+	// 	return &dtr, nil
+	// }
 
-	er := WSErrorResponse{}
-	err = JsonBytes2Struct(rspMsg, &er)
-	if err == nil && er.Valid() {
-		return &er, nil
-	}
+	// tr := WSTableResponse{}
+	// err = JsonBytes2Struct(rspMsg, &tr)
+	// if err == nil && tr.Valid() {
+	// 	return &tr, nil
+	// }
 
-	if string(rspMsg) == "pong" {
-		return string(rspMsg), nil
-	}
+	// er := WSErrorResponse{}
+	// err = JsonBytes2Struct(rspMsg, &er)
+	// if err == nil && er.Valid() {
+	// 	return &er, nil
+	// }
+
+	// if string(rspMsg) == "pong" {
+	// 	return string(rspMsg), nil
+	// }
 
 	return nil, err
 

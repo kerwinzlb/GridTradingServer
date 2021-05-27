@@ -145,7 +145,6 @@ func (a *OKWSAgent) Login(apiKey, passphrase string) error {
 	} else {
 		op, err := loginOp(apiKey, passphrase, timestamp, sign)
 		data, err := Struct2JsonString(op)
-		log.Printf("Send Msg: %s", data)
 		err = a.conn.WriteMessage(websocket.TextMessage, []byte(data))
 		if err != nil {
 			return err
@@ -213,21 +212,24 @@ func (a *OKWSAgent) handleEventResponse(r interface{}) error {
 }
 
 func (a *OKWSAgent) handleTableResponse(r interface{}) error {
-	tb := ""
+	channel := ""
 	switch r.(type) {
+	case *WSOrdersResponse:
+		channel = r.(*WSOrdersResponse).Arg.Channel
 	case *WSTableResponse:
-		tb = r.(*WSTableResponse).Table
+		channel = r.(*WSTableResponse).Table
 	case *WSDepthTableResponse:
-		tb = r.(*WSDepthTableResponse).Table
+		channel = r.(*WSDepthTableResponse).Table
 	}
 
-	cbs := a.subMap[tb]
+	cbs := a.subMap[channel]
 	if cbs != nil {
 		for i := 0; i < len(cbs); i++ {
 			cb := cbs[i]
-			if err := cb(r); err != nil {
-				return err
-			}
+			go cb(r)
+			// if err := cb(r); err != nil {
+			// 	return err
+			// }
 		}
 	}
 	return nil
@@ -282,7 +284,6 @@ func (a *OKWSAgent) receive() {
 			a.errCh <- err
 			break
 		}
-
 		txtMsg := message
 		switch messageType {
 		case websocket.TextMessage:
@@ -300,7 +301,7 @@ func (a *OKWSAgent) receive() {
 		}
 
 		if err != nil {
-			break
+			continue
 		}
 
 		switch rsp.(type) {
@@ -332,6 +333,9 @@ func (a *OKWSAgent) receive() {
 		case *WSTableResponse:
 			tb := rsp.(*WSTableResponse)
 			a.wsTbCh <- tb
+		case *WSOrdersResponse:
+			ord := rsp.(*WSOrdersResponse)
+			a.wsTbCh <- ord
 		default:
 			//log.Println(rsp)
 		}

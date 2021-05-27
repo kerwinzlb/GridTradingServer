@@ -1,10 +1,17 @@
 {
 	"Endpoint": "https://www.okex.com/",
 	"WSEndpoint":"wss://ws.okex.com:8443/ws/v5/private",
+	"MgoEndpoint":"mongodb://localhost:27017",
+	"MgoDBName":"grid",
+	"MgoCollectionName":"orders",
 	"ApiKey":"",
 	"SecretKey":"",
 	"Passphrase":"",
 	"TimeoutSecond": 45,
 	"IsPrint": false,
-	"I18n":"en_US"
+	"I18n":"en_US",
+	"instId":"ETH-USDT",
+	"Amount":15,
+	"GridSize":0.007,
+	"GridNum":1
 }

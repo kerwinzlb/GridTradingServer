@@ -24,6 +24,11 @@ type Config struct {
 	// Rest websocket api endpoint url. eg: ws://192.168.80.113:10442/
 	WSEndpoint string
 
+	//mongo api endpoint url
+	MgoEndpoint       string
+	MgoDBName         string
+	MgoCollectionName string
+
 	// The user's api key provided by OKEx.
 	ApiKey string
 	// The user's secret key provided by OKEx. The secret key used to sign your request data.
@@ -36,6 +41,14 @@ type Config struct {
 	IsPrint bool
 	// Internationalization @see file: constants.go
 	I18n string
+	//产品ID，
+	InstId string
+	//交易金额
+	Amount float64
+	//格子区间 百分比
+	GridSize float64
+	//格子数量
+	GridNum int
 }
 
 // GetConfiguration: read config from .json file

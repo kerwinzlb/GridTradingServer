@@ -255,14 +255,14 @@ package okex
 HTTP请求
 POST /api/v5/trade/order
 */
-func (client *Client) PostTradeOrder(orderInfo *map[string]string) (result *map[string]interface{}, err error) {
-	r := map[string]interface{}{}
+func (client *Client) PostTradeOrder(orderInfo *map[string]string) (result *OrderResult, err error) {
+	r := new(OrderResult)
 
-	if _, err := client.Request(POST, TRADE_ORDER, orderInfo, &r); err != nil {
+	if _, err := client.Request(POST, TRADE_ORDER, orderInfo, r); err != nil {
 		return nil, err
 	}
 
-	return &r, nil
+	return r, nil
 }
 
 /*

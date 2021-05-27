@@ -28,14 +28,14 @@ func (client *Client) GetMarketTickers(instType string, uly string) (*map[string
 HTTP请求
 GET /api/v5/market/ticker
 */
-func (client *Client) GetMarketTicker(instId string) (*map[string]interface{}, error) {
-	r := map[string]interface{}{}
+func (client *Client) GetMarketTicker(instId string) (*TicketResult, error) {
+	r := new(TicketResult)
 
 	req := NewReqParams()
 	req.AddParam("instId", instId)
 	url := BuildParams(MARKET_TICKER, req.Params())
-	if _, err := client.Request(GET, url, nil, &r); err != nil {
+	if _, err := client.Request(GET, url, nil, r); err != nil {
 		return nil, err
 	}
-	return &r, nil
+	return r, nil
 }

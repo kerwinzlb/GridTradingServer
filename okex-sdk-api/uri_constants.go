@@ -13,6 +13,8 @@ const (
 	MARKET_TICKERS = "/api/v5/market/tickers"
 	MARKET_TICKER  = "/api/v5/market/ticker"
 
+	PUBLIC_INSTRUMENTS = "/api/v5/public/instruments"
+
 	TRADE_ORDER               = "/api/v5/trade/order"
 	TRADE_BATCH_ORDERS        = "/api/v5/trade/batch-orders"
 	TRADE_CANCEL_ORDER        = "/api/v5/trade/cancel-order"
