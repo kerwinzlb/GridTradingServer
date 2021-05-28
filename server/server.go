@@ -39,11 +39,11 @@ type Server struct {
 	lock *sync.RWMutex
 }
 
-func New(conf *okex.Config) (*Server, error) {
+func New(instId string, conf *okex.Config) (*Server, error) {
 	confCopy := *conf
 	s := &Server{
 		conf:         &confCopy,
-		instId:       conf.InstId,
+		instId:       instId,
 		amount:       conf.Amount,
 		gridSize:     1 + conf.GridSize,
 		gridNum:      conf.GridNum,

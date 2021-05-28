@@ -92,11 +92,11 @@ var (
 		Usage: "sets the verbosity level, override loglevel in userconfig.json",
 		Value: 4,
 	}
-	// NetworkIdFlag = cli.Uint64Flag{
-	// 	Name:  "networkid",
-	// 	Usage: "Network identifier (integer, 99=mainnet, 101=testnet, 100=devnet)",
-	// 	Value: params.MainNetworkId,
-	// }
+	InstIdFlag = cli.StringFlag{
+		Name:  "instid",
+		Usage: "okex product id",
+		Value: "",
+	}
 	ConfigDirFlag = DirectoryFlag{
 		Name:  "configdir",
 		Usage: "Data directory for the microchain databases",

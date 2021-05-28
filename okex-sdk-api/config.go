@@ -40,8 +40,6 @@ type Config struct {
 	IsPrint bool
 	// Internationalization @see file: constants.go
 	I18n string
-	//产品ID，
-	InstId string
 	//交易金额
 	Amount float64
 	//格子区间 百分比

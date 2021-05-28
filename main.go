@@ -24,6 +24,7 @@ var (
 	mFlags = []cli.Flag{
 		utils.ConfigDirFlag,
 		utils.VerbosityFlag,
+		utils.InstIdFlag,
 	}
 )
 
@@ -45,12 +46,21 @@ func gridTradingServer(ctx *cli.Context) {
 	configFilePath := ctx.GlobalString(utils.ConfigDirFlag.Name)
 	config, err := okex.GetConfiguration(configFilePath)
 	if err != nil {
-		fmt.Errorf("GetConfiguration error%v\n", err)
+		log.Errorf("GetConfiguration error%v\n", err)
 		return
 	}
-	gridServer, err := server.New(config)
+	var instId string
+	if ctx.GlobalIsSet(utils.InstIdFlag.Name) {
+		if instId = ctx.GlobalString(utils.InstIdFlag.Name); instId == "" {
+			return
+		}
+	} else {
+		log.Errorf("There is no InstIdFlag")
+		return
+	}
+	gridServer, err := server.New(instId, config)
 	if err != nil {
-		fmt.Errorf("server.New error%v\n", err)
+		log.Errorf("server.New error%v\n", err)
 		return
 	}
 	go waitToExit(gridServer)
@@ -85,13 +95,12 @@ func initLog(ctx *cli.Context) error {
 	absLogPath, _ := filepath.Abs("./_logs")
 	absLogPath = absLogPath + "/gridTradingServer"
 	if err := os.MkdirAll(filepath.Dir(absLogPath), os.ModePerm); err != nil {
-		log.Errorf("Error %v in create %s", err, absLogPath)
+		fmt.Errorf("Error %v in create %s", err, absLogPath)
 		return err
 	}
-
 	lvl := log.Lvl(ctx.GlobalInt(utils.VerbosityFlag.Name))
+	fmt.Println("lvl:", lvl)
 	log.LogRotate(absLogPath, lvl)
-
 	return nil
 }
 
