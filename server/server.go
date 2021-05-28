@@ -155,10 +155,10 @@ func (s *Server) UnSubscribe() error {
 	return nil
 }
 
-func (s *Server) insertMgo(instid, side, px, sz, fillTime, cTime string) error {
+func (s *Server) insertMgo(instid, side, px, sz, avgPx, fee, fillTime, cTime string) error {
 	collection := s.mgoClient.Database(s.conf.MgoDBName).Collection(s.conf.MgoCollectionName)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	collection.InsertOne(ctx, bson.M{"instid": instid, "side": side, "px": px, "sz": sz, "fillTime": fillTime, "cTime": cTime})
+	collection.InsertOne(ctx, bson.M{"instid": instid, "side": side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 	cancel()
 	return nil
 }
@@ -171,7 +171,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 	if res.Data[0].Code == "0" && res.Data[0].InstType == "SPOT" && res.Data[0].InstId == s.instId && res.Data[0].OrdType == "post_only" {
 		if res.Data[0].State == "filled" {
 			s.deleteGridMap(res.Data[0].Px)
-			s.insertMgo(res.Data[0].InstId, res.Data[0].Side, res.Data[0].Px, res.Data[0].Sz, res.Data[0].FillTime, res.Data[0].CTime)
+			s.insertMgo(res.Data[0].InstId, res.Data[0].Side, res.Data[0].Px, res.Data[0].Sz, res.Data[0].AvgPx, res.Data[0].Fee, res.Data[0].FillTime, res.Data[0].CTime)
 			sellPri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
 			buyPri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
 			if res.Data[0].Side == "buy" {
