@@ -198,7 +198,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				px := strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
 				ordId, px, err := s.PostSellTradeOrder(px, s.sz)
 				if err != nil {
-					log.Debug("买单成交，挂卖单失败", err)
+					log.Error("买单成交，挂卖单失败", "ordId", ordId, "error", err)
 					return err
 				}
 				s.setGridMap(px, ordId)
@@ -212,17 +212,17 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				px = strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
 				ordId, px, err = s.PostBuyTradeOrder(px, s.sz)
 				if err != nil {
-					log.Debug("买单成交，挂买单失败", err)
+					log.Error("买单成交，挂买单失败", "ordId", ordId, "error", err)
 					return err
 				}
 				s.setGridMap(px, ordId)
 				log.Debug("买单成交，挂买单成功")
 				//撤销一个卖单
 				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64), "0"), ".")
-				OrdId := s.getGridMap(px)
-				err = s.PostTradeCancelOrder(OrdId, "")
+				ordId = s.getGridMap(px)
+				err = s.PostTradeCancelOrder(ordId, "")
 				if err != nil {
-					log.Debug("买单成交，撤销卖单失败", err)
+					log.Error("买单成交，撤销卖单失败", "ordId", ordId, "error", err)
 					return err
 				}
 				s.deleteGridMap(px)
@@ -234,7 +234,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				px := strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
 				ordId, px, err := s.PostBuyTradeOrder(px, s.sz)
 				if err != nil {
-					log.Debug("卖单成交，挂买单失败", err)
+					log.Error("卖单成交，挂买单失败", "ordId", ordId, "error", err)
 					return err
 				}
 				s.setGridMap(px, ordId)
@@ -247,17 +247,17 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				px = strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
 				ordId, px, err = s.PostSellTradeOrder(px, s.sz)
 				if err != nil {
-					log.Debug("卖单成交，挂卖单失败", err)
+					log.Error("卖单成交，挂卖单失败", "ordId", ordId, "error", err)
 					return err
 				}
 				s.setGridMap(px, ordId)
 				log.Debug("卖单成交，挂卖单成功")
 				//撤销一个买单
 				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64), "0"), ".")
-				OrdId := s.getGridMap(px)
-				err = s.PostTradeCancelOrder(OrdId, "")
+				ordId = s.getGridMap(px)
+				err = s.PostTradeCancelOrder(ordId, "")
 				if err != nil {
-					log.Debug("卖单成交，撤销买单失败", err)
+					log.Error("卖单成交，撤销买单失败", "ordId", ordId, "error", err)
 					return err
 				}
 				s.deleteGridMap(px)
