@@ -23,6 +23,7 @@ var (
 
 	mFlags = []cli.Flag{
 		utils.ConfigDirFlag,
+		utils.VerbosityFlag,
 	}
 )
 

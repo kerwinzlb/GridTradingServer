@@ -90,7 +90,7 @@ var (
 	VerbosityFlag = cli.IntFlag{
 		Name:  "verbosity",
 		Usage: "sets the verbosity level, override loglevel in userconfig.json",
-		Value: 2,
+		Value: 4,
 	}
 	// NetworkIdFlag = cli.Uint64Flag{
 	// 	Name:  "networkid",
