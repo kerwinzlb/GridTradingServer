@@ -48,6 +48,7 @@ func gridTradingServer(ctx *cli.Context) {
 		log.Errorf("GetConfiguration error%v\n", err)
 		return
 	}
+	log.Info("GetConfiguration success")
 	var instId string
 	if ctx.GlobalIsSet(utils.InstIdFlag.Name) {
 		if instId = ctx.GlobalString(utils.InstIdFlag.Name); instId == "" {
@@ -59,11 +60,17 @@ func gridTradingServer(ctx *cli.Context) {
 	}
 	gridServer, err := server.New(instId, config)
 	if err != nil {
-		log.Errorf("server.New error%v\n", err)
+		log.Errorf("server.New error:%v\n", err)
 		return
 	}
+	log.Info("server.New success")
 	go waitToExit(gridServer)
-	gridServer.Start()
+	err = gridServer.Start()
+	if err != nil {
+		log.Errorf("server.Start error:%v\n", err)
+		return
+	}
+	log.Info("server.Start success")
 	gridServer.Wait()
 }
 

@@ -127,14 +127,17 @@ func (s *Server) Start() error {
 		}
 		s.setGridMap(px, ordId)
 	}
-
 	s.wsClient.Start(s.conf)
 	err := s.wsClient.Login(s.conf.ApiKey, s.conf.Passphrase)
 	if err != nil {
 		return err
 	}
-	s.Subscribe()
-
+	log.Info("websocket Login success")
+	err = s.Subscribe()
+	if err != nil {
+		return err
+	}
+	log.Info("websocket Subscribe success")
 	return nil
 }
 
@@ -166,7 +169,6 @@ func (s *Server) Subscribe() error {
 	if err != nil {
 		return err
 	}
-	time.Sleep(time.Second)
 	return nil
 }
 
@@ -262,16 +264,6 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				log.Debug("卖单成交，撤销买单成功")
 			}
 		}
-
-		// if res.Data[0].State == "live" {
-		// 	s.setGridMap(res.Data[0].Px, res.Data[0].OrdId)
-		// 	// log.Debug("px sz OrdId", res.Data[0].Px, res.Data[0].Sz, res.Data[0].OrdId)
-		// }
-
-		// if res.Data[0].State == "canceled" {
-		// 	s.deleteGridMap(res.Data[0].Px)
-		// }
-
 	}
 	return nil
 }
