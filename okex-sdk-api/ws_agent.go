@@ -286,6 +286,10 @@ func (a *OKWSAgent) receive() {
 	}()
 
 	for {
+		select {
+		case <-a.stopCh:
+			return
+		}
 		messageType, message, err := a.conn.ReadMessage()
 		if err != nil {
 			a.errCh <- err

@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -107,9 +108,6 @@ func (s *Server) insertOrders(instid, side, px, sz, avgPx, fee, fillTime, cTime 
 }
 
 func (s *Server) Start() error {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	buyPri, _ := strconv.ParseFloat(s.last, 64)
 	sellPri, _ := strconv.ParseFloat(s.last, 64)
 	for i := 0; i < s.gridNum; i++ {
@@ -338,11 +336,12 @@ func (s *Server) Stop() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	s.UnSubscribe()
+	s.wsClient.Stop()
 	for _, val := range s.gridMap {
 		s.PostTradeCancelOrder(val, "")
 	}
-	s.UnSubscribe()
-	s.wsClient.Stop()
+
 	s.mgoClient.Disconnect(s.ctx)
 	s.mgoCancel()
 	close(s.stop)
@@ -355,4 +354,5 @@ func (s *Server) Wait() {
 	stop := s.stop
 
 	<-stop
+	os.Exit(1)
 }
