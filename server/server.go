@@ -83,6 +83,28 @@ func (s *Server) Start() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
+	buyPri, _ := strconv.ParseFloat(s.initLast, 64)
+	sellPri, _ := strconv.ParseFloat(s.initLast, 64)
+	for i := 0; i < s.gridNum; i++ {
+		buyPri = common.FloatRound(buyPri/s.gridSize, s.tickSzN)
+		px := strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
+		sz := strconv.FormatFloat(s.conf.Amount/buyPri, 'f', s.lotSzN, 64)
+		ordId, px, err := s.PostBuyTradeOrder(px, sz)
+		if err != nil {
+			return err
+		}
+		s.setGridMap(px, ordId)
+
+		sellPri = common.FloatRound(sellPri*s.gridSize, s.tickSzN)
+		px = strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
+		sz = strconv.FormatFloat(s.conf.Amount/sellPri, 'f', s.lotSzN, 64)
+		ordId, px, err = s.PostSellTradeOrder(px, sz)
+		if err != nil {
+			return err
+		}
+		s.setGridMap(px, ordId)
+	}
+
 	s.wsClient.Start(s.conf)
 	err := s.wsClient.Login(s.conf.ApiKey, s.conf.Passphrase)
 	if err != nil {
@@ -90,25 +112,6 @@ func (s *Server) Start() error {
 	}
 	s.Subscribe()
 
-	buyPri, _ := strconv.ParseFloat(s.initLast, 64)
-	sellPri, _ := strconv.ParseFloat(s.initLast, 64)
-	for i := 0; i < s.gridNum; i++ {
-		buyPri = common.FloatRound(buyPri/s.gridSize, s.tickSzN)
-		px := strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
-		sz := strconv.FormatFloat(s.conf.Amount/buyPri, 'f', s.lotSzN, 64)
-		_, _, err := s.PostBuyTradeOrder(px, sz)
-		if err != nil {
-			return err
-		}
-
-		sellPri = common.FloatRound(sellPri*s.gridSize, s.tickSzN)
-		px = strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
-		sz = strconv.FormatFloat(s.conf.Amount/sellPri, 'f', s.lotSzN, 64)
-		_, _, err = s.PostSellTradeOrder(px, sz)
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -177,12 +180,14 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				sellPri = common.FloatRound(sellPri*s.gridSize, s.tickSzN)
 				px := strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
 				sz := strconv.FormatFloat(s.conf.Amount/sellPri, 'f', s.lotSzN, 64)
-				_, _, err := s.PostSellTradeOrder(px, sz)
+				ordId, px, err := s.PostSellTradeOrder(px, sz)
 				if err != nil {
 					log.Debug("买单成交，挂卖单失败", err)
 					return err
 				}
+				s.setGridMap(px, ordId)
 				log.Debug("买单成交，挂卖单成功")
+
 				for i := 0; i < s.gridNum; i++ {
 					buyPri = common.FloatRound(buyPri/s.gridSize, s.tickSzN)
 					sellPri = common.FloatRound(sellPri*s.gridSize, s.tickSzN)
@@ -190,11 +195,12 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				//增加一个买单
 				px = strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
 				sz = strconv.FormatFloat(s.conf.Amount/buyPri, 'f', s.lotSzN, 64)
-				_, _, err = s.PostBuyTradeOrder(px, sz)
+				ordId, px, err = s.PostBuyTradeOrder(px, sz)
 				if err != nil {
 					log.Debug("买单成交，挂买单失败", err)
 					return err
 				}
+				s.setGridMap(px, ordId)
 				log.Debug("买单成交，挂买单成功")
 				//撤销一个卖单
 				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64), "0"), ".")
@@ -204,6 +210,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					log.Debug("买单成交，撤销卖单失败", err)
 					return err
 				}
+				s.deleteGridMap(px)
 				log.Debug("买单成交，撤销卖单成功")
 			} else if res.Data[0].Side == "sell" {
 				log.Debug("卖单成交")
@@ -211,11 +218,12 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				buyPri = common.FloatRound(buyPri/s.gridSize, s.tickSzN)
 				px := strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
 				sz := strconv.FormatFloat(s.conf.Amount/buyPri, 'f', s.lotSzN, 64)
-				_, _, err := s.PostBuyTradeOrder(px, sz)
+				ordId, px, err := s.PostBuyTradeOrder(px, sz)
 				if err != nil {
 					log.Debug("卖单成交，挂买单失败", err)
 					return err
 				}
+				s.setGridMap(px, ordId)
 				log.Debug("卖单成交，挂买单成功")
 				for i := 0; i < s.gridNum; i++ {
 					buyPri = common.FloatRound(buyPri/s.gridSize, s.tickSzN)
@@ -224,11 +232,12 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				//增加一个卖单
 				px = strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
 				sz = strconv.FormatFloat(s.conf.Amount/sellPri, 'f', s.lotSzN, 64)
-				_, _, err = s.PostSellTradeOrder(px, sz)
+				ordId, px, err = s.PostSellTradeOrder(px, sz)
 				if err != nil {
 					log.Debug("卖单成交，挂卖单失败", err)
 					return err
 				}
+				s.setGridMap(px, ordId)
 				log.Debug("卖单成交，挂卖单成功")
 				//撤销一个买单
 				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64), "0"), ".")
@@ -238,18 +247,19 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					log.Debug("卖单成交，撤销买单失败", err)
 					return err
 				}
+				s.deleteGridMap(px)
 				log.Debug("卖单成交，撤销买单成功")
 			}
 		}
 
-		if res.Data[0].State == "live" {
-			s.setGridMap(res.Data[0].Px, res.Data[0].OrdId)
-			// log.Debug("px sz OrdId", res.Data[0].Px, res.Data[0].Sz, res.Data[0].OrdId)
-		}
+		// if res.Data[0].State == "live" {
+		// 	s.setGridMap(res.Data[0].Px, res.Data[0].OrdId)
+		// 	// log.Debug("px sz OrdId", res.Data[0].Px, res.Data[0].Sz, res.Data[0].OrdId)
+		// }
 
-		if res.Data[0].State == "canceled" {
-			s.deleteGridMap(res.Data[0].Px)
-		}
+		// if res.Data[0].State == "canceled" {
+		// 	s.deleteGridMap(res.Data[0].Px)
+		// }
 
 	}
 	return nil
