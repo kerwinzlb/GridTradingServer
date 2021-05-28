@@ -90,7 +90,7 @@ var (
 	VerbosityFlag = cli.IntFlag{
 		Name:  "verbosity",
 		Usage: "sets the verbosity level, override loglevel in userconfig.json",
-		Value: 4,
+		Value: 2,
 	}
 	InstIdFlag = cli.StringFlag{
 		Name:  "instid",
