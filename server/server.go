@@ -1,20 +1,23 @@
 package server
 
 import (
-	"context"
 	"encoding/hex"
 	"math"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/kerwinzlb/GridTradingServer/common"
+	"github.com/kerwinzlb/GridTradingServer/db"
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
 	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+const (
+	MGO_DB_NAME                = "grid"
+	MGO_COLLECTION_TICKET_NAME = "ticket"
+	MGO_COLLECTION_ORDER_NAME  = "order"
 )
 
 type Server struct {
@@ -30,10 +33,7 @@ type Server struct {
 	restClient   *okex.Client
 	wsEndpoint   string
 	wsClient     *okex.OKWSAgent
-	mgoEndpoint  string
-	mgoClient    *mongo.Client
-	mgoCancel    context.CancelFunc
-	ctx          context.Context
+	mgo          *db.Mongo
 
 	stop chan struct{} // Channel to wait for termination notifications
 }
@@ -49,14 +49,10 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 		restClient:   okex.NewClient(*conf),
 		wsEndpoint:   conf.WSEndpoint,
 		wsClient:     new(okex.OKWSAgent),
-		mgoEndpoint:  conf.MgoEndpoint,
-		mgoClient:    new(mongo.Client),
+		mgo:          db.NewMgo(conf.MgoEndpoint),
 		stop:         make(chan struct{}),
 	}
-	err := s.newMgo()
-	if err != nil {
-		return nil, err
-	}
+
 	pubRes, err := s.restClient.GetPublicInstruments("SPOT", "", s.instId)
 	if err != nil {
 		return nil, err
@@ -65,42 +61,6 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 	s.lotSzN = common.FloatRoundLen(pubRes.Data[0].LotSz)
 	s.minSzN = common.FloatRoundLen(pubRes.Data[0].MinSz)
 	return s, nil
-}
-
-func (s *Server) newMgo() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(s.mgoEndpoint))
-	if err != nil {
-		return err
-	}
-	s.mgoClient = client
-	s.mgoCancel = cancel
-	s.ctx = ctx
-	return nil
-}
-
-func (s *Server) insertTicker(ticket okex.Ticket) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	collection := s.mgoClient.Database(s.conf.MgoDBName).Collection(s.conf.MgoCollectionName[1])
-	last, _ := strconv.ParseFloat(ticket.Last, 64)
-	ts, _ := strconv.ParseInt(ticket.Ts, 10, 64)
-	collection.InsertOne(ctx, bson.M{"instid": ticket.InstId, "last": last, "ts": ts})
-	return nil
-}
-
-func (s *Server) insertOrders(index int, order okex.DataOrder) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	collection := s.mgoClient.Database(s.conf.MgoDBName).Collection(s.conf.MgoCollectionName[0])
-	px, _ := strconv.ParseFloat(order.Px, 64)
-	sz, _ := strconv.ParseFloat(order.Sz, 64)
-	avgPx, _ := strconv.ParseFloat(order.AvgPx, 64)
-	fee, _ := strconv.ParseFloat(order.Fee, 64)
-	fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
-	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
-	collection.InsertOne(ctx, bson.M{"index": index, "instid": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
-	return nil
 }
 
 func (s *Server) Start() error {
@@ -122,7 +82,11 @@ func (s *Server) Start() error {
 	}
 	pric, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
 	s.sz = strconv.FormatFloat(s.conf.Amount/pric, 'f', s.lotSzN, 64)
-	s.insertTicker(ticRes.Data[0])
+	err = s.mgo.Connect()
+	if err != nil {
+		return err
+	}
+	s.InsertTicker(ticRes.Data[0])
 	last, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
 	index := 0
 	for i := s.gridNum; i > 0; i-- {
@@ -139,6 +103,32 @@ func (s *Server) Start() error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *Server) InsertTicker(ticket okex.Ticket) error {
+	last, _ := strconv.ParseFloat(ticket.Last, 64)
+	ts, _ := strconv.ParseInt(ticket.Ts, 10, 64)
+	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"instid": ticket.InstId, "last": last, "ts": ts})
+	if err != nil {
+		log.Error("InsertTicker", "error", err)
+		return err
+	}
+	return nil
+}
+
+func (s *Server) InsertOrder(index int, order okex.DataOrder) error {
+	px, _ := strconv.ParseFloat(order.Px, 64)
+	sz, _ := strconv.ParseFloat(order.Sz, 64)
+	avgPx, _ := strconv.ParseFloat(order.AvgPx, 64)
+	fee, _ := strconv.ParseFloat(order.Fee, 64)
+	fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
+	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
+	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"index": index, "instid": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
+	if err != nil {
+		log.Error("InsertOrder", "error", err)
+		return err
 	}
 	return nil
 }
@@ -168,7 +158,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 		if res.Data[0].State == "filled" {
 			clOrdId, _ := hex.DecodeString(res.Data[0].ClOrdId)
 			index, _ := strconv.Atoi(string(clOrdId))
-			s.insertOrders(index, res.Data[0])
+			go s.InsertOrder(index, res.Data[0])
 			pri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
 			if res.Data[0].Side == "buy" {
 				log.Debug("买单成交")
@@ -290,9 +280,7 @@ func (s *Server) Stop() error {
 			break
 		}
 	}
-
-	s.mgoClient.Disconnect(s.ctx)
-	s.mgoCancel()
+	s.mgo.DisConnect()
 	close(s.stop)
 	return nil
 }

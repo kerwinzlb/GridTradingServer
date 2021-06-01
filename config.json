@@ -2,8 +2,6 @@
 	"Endpoint": "https://www.okex.com/",
 	"WSEndpoint":"wss://ws.okex.com:8443/ws/v5/private",
 	"MgoEndpoint":"mongodb://localhost:27017",
-	"MgoDBName":"grid",
-	"MgoCollectionName":["orders", "ticker"],
 	"ApiKey":"",
 	"SecretKey":"",
 	"Passphrase":"",

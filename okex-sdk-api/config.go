@@ -24,9 +24,7 @@ type Config struct {
 	WSEndpoint string
 
 	//mongo api endpoint url
-	MgoEndpoint       string
-	MgoDBName         string
-	MgoCollectionName []string
+	MgoEndpoint string
 
 	// The user's api key provided by OKEx.
 	ApiKey string
