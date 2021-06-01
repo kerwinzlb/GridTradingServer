@@ -28,7 +28,7 @@ type OKWSAgent struct {
 	stopCh chan interface{}
 	errCh  chan error
 
-	subMap     map[string][]ReceivedDataCallback
+	subMap     map[string]ReceivedDataCallback
 	processMut sync.Mutex
 }
 
@@ -50,7 +50,7 @@ func (a *OKWSAgent) Start(config *Config) error {
 		a.wsCh = make(chan interface{})
 		a.errCh = make(chan error)
 		a.stopCh = make(chan interface{}, 16)
-		a.subMap = make(map[string][]ReceivedDataCallback)
+		a.subMap = make(map[string]ReceivedDataCallback)
 
 		go a.work()
 		go a.receive()
@@ -78,16 +78,8 @@ func (a *OKWSAgent) Subscribe(channel, instType string, cb ReceivedDataCallback)
 		return err
 	}
 
-	cbs := a.subMap[channel]
-	if cbs == nil {
-		cbs = []ReceivedDataCallback{}
-	}
-
 	if cb != nil {
-		cbs = append(cbs, cb)
-		// fullTopic, _ := st.ToString()
-		a.subMap[channel] = cbs
-		// a.subMap[fullTopic] = cbs
+		a.subMap[channel] = cb
 	}
 
 	return nil
@@ -188,12 +180,9 @@ func (a *OKWSAgent) handleResponse(r interface{}) error {
 		return nil
 	}
 
-	cbs := a.subMap[channel]
-	if cbs != nil {
-		for i := 0; i < len(cbs); i++ {
-			cb := cbs[i]
-			go cb(r)
-		}
+	cb := a.subMap[channel]
+	if cb != nil {
+		go cb(r)
 	}
 	return nil
 }
