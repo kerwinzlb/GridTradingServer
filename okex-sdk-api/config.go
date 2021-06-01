@@ -58,8 +58,8 @@ func GetConfiguration(configFilePath string) (*Config, error) {
 	log.Debugf("load vnode config file from %v", filePath)
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
 		//If no config file exists, return nil
-		log.Infof("%v not exists\nUse default settings", configFilePath)
-		return nil, nil
+		log.Errorf("%v not exists\nUse default settings", configFilePath)
+		return nil, err
 	}
 
 	if _, err := os.Stat(configFilePath); err != nil {
@@ -81,7 +81,7 @@ func GetUserConfig(filepath string) (*Config, error) {
 		return nil, err
 	}
 
-	log.Debug("Successfully Opened ", filepath)
+	log.Debugf("Successfully Opened %v", filepath)
 	// defer the closing of our jsonFile so that we can parse it later on
 	defer jsonFile.Close()
 

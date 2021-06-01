@@ -48,11 +48,11 @@ func (a *OKWSAgent) Start(config *Config) error {
 	c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
 
 	if err != nil {
-		log.Debugf("dial:%+v", err)
+		log.Errorf("websocket dial:%+v", err)
 		return err
 	} else {
 		if config.IsPrint {
-			log.Debugf("Connected to %s", a.baseUrl)
+			log.Debugf("Connected to %s success", a.baseUrl)
 		}
 		a.conn = c
 		a.config = config
@@ -260,10 +260,9 @@ func (a *OKWSAgent) work() {
 		case <-a.signalCh:
 			break
 		case err := <-a.errCh:
-			log.Debug("work() a.errCh", err)
 			c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
 			if err != nil {
-				log.Debugf("dial:%+v", err)
+				log.Errorf("websocket dial:%+v", err)
 			} else {
 				a.conn = c
 				a.Login(a.config.ApiKey, a.config.Passphrase)
@@ -293,6 +292,7 @@ func (a *OKWSAgent) receive() {
 		}
 		messageType, message, err := a.conn.ReadMessage()
 		if err != nil {
+			log.Errorf("receive() ReadMessage error:%v", err)
 			a.errCh <- err
 		}
 		txtMsg := message

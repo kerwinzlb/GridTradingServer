@@ -358,7 +358,7 @@ func FmtPrintln(flag string, info interface{}) {
 	if info != nil {
 		jsonString, err := Struct2JsonString(info)
 		if err != nil {
-			log.Debug("Struct2JsonString", err)
+			log.Debugf("Struct2JsonString", err)
 		}
 		log.Debug(jsonString)
 	} else {

@@ -34,7 +34,7 @@ func waitToExit(server *server.Server) {
 	for {
 		s := <-c
 		if s == syscall.SIGINT || s == syscall.SIGKILL || s == syscall.SIGTERM {
-			log.Debug("waitToExit", "get signal:", s)
+			log.Info("waitToExit", "get signal:", s)
 			server.Stop()
 		}
 	}
@@ -45,7 +45,7 @@ func gridTradingServer(ctx *cli.Context) {
 	configFilePath := ctx.GlobalString(utils.ConfigDirFlag.Name)
 	config, err := okex.GetConfiguration(configFilePath)
 	if err != nil {
-		log.Errorf("GetConfiguration error%v\n", err)
+		log.Errorf("GetConfiguration error:%v\n", err)
 		return
 	}
 	log.Info("GetConfiguration success")
@@ -55,7 +55,7 @@ func gridTradingServer(ctx *cli.Context) {
 			return
 		}
 	} else {
-		log.Errorf("There is no InstIdFlag")
+		log.Error("There is no InstIdFlag")
 		return
 	}
 	gridServer, err := server.New(instId, config)
