@@ -70,7 +70,7 @@ func (s *Server) Start() error {
 		return err
 	}
 	log.Info("websocket Login success")
-	err = s.Subscribe()
+	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, "SPOT", s.ReceivedOrdersDataCallback)
 	if err != nil {
 		return err
 	}
@@ -128,22 +128,6 @@ func (s *Server) InsertOrder(index int, order okex.DataOrder) error {
 	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"index": index, "instid": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 	if err != nil {
 		log.Error("InsertOrder", "error", err)
-		return err
-	}
-	return nil
-}
-
-func (s *Server) Subscribe() error {
-	err := s.wsClient.Subscribe(okex.CHNL_OEDERS, "SPOT", s.ReceivedOrdersDataCallback)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func (s *Server) UnSubscribe() error {
-	err := s.wsClient.UnSubscribe(okex.CHNL_OEDERS, "SPOT")
-	if err != nil {
 		return err
 	}
 	return nil
@@ -264,7 +248,7 @@ func (s *Server) PostSellTradeOrder(clOrdId, px, sz string) (string, string, err
 }
 
 func (s *Server) Stop() error {
-	s.UnSubscribe()
+	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, "SPOT")
 	s.wsClient.Stop()
 
 	trdp, err := s.restClient.GetTradeOrdersPending(okex.NewReqParams())
