@@ -294,8 +294,12 @@ func (client *Client) PostTradeCancelOrder(instId, ordId, clOrdId string) (*map[
 
 	req := NewParams()
 	req["instId"] = instId
-	req["ordId"] = ordId
-	req["clOrdId"] = clOrdId
+	if ordId != "" {
+		req["ordId"] = ordId
+	}
+	if clOrdId != "" {
+		req["clOrdId"] = clOrdId
+	}
 
 	if _, err := client.Request(POST, TRADE_CANCEL_ORDER, req, &r); err != nil {
 		return nil, err
