@@ -15,11 +15,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/kerwinzlb/GridTradingServer/log"
 
-	"os"
-	"os/signal"
-	"runtime/debug"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -28,17 +24,11 @@ type OKWSAgent struct {
 	config  *Config
 	conn    *websocket.Conn
 
-	wsEvtCh  chan interface{}
-	wsErrCh  chan interface{}
-	wsTbCh   chan interface{}
-	stopCh   chan interface{}
-	errCh    chan error
-	signalCh chan os.Signal
+	wsCh   chan interface{}
+	stopCh chan interface{}
+	errCh  chan error
 
-	subMap         map[string][]ReceivedDataCallback
-	activeChannels map[string]bool
-	hotDepthsMap   map[string]*WSHotDepths
-
+	subMap     map[string][]ReceivedDataCallback
 	processMut sync.Mutex
 }
 
@@ -57,17 +47,10 @@ func (a *OKWSAgent) Start(config *Config) error {
 		a.conn = c
 		a.config = config
 
-		a.wsEvtCh = make(chan interface{})
-		a.wsErrCh = make(chan interface{})
-		a.wsTbCh = make(chan interface{})
+		a.wsCh = make(chan interface{})
 		a.errCh = make(chan error)
 		a.stopCh = make(chan interface{}, 16)
-		a.signalCh = make(chan os.Signal)
-		a.activeChannels = make(map[string]bool)
 		a.subMap = make(map[string][]ReceivedDataCallback)
-		a.hotDepthsMap = make(map[string]*WSHotDepths)
-
-		signal.Notify(a.signalCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 
 		go a.work()
 		go a.receive()
@@ -98,7 +81,6 @@ func (a *OKWSAgent) Subscribe(channel, instType string, cb ReceivedDataCallback)
 	cbs := a.subMap[channel]
 	if cbs == nil {
 		cbs = []ReceivedDataCallback{}
-		a.activeChannels[channel] = false
 	}
 
 	if cb != nil {
@@ -130,7 +112,6 @@ func (a *OKWSAgent) UnSubscribe(channel, instType string) error {
 	}
 
 	a.subMap[channel] = nil
-	a.activeChannels[channel] = false
 
 	return nil
 }
@@ -170,16 +151,14 @@ func (a *OKWSAgent) Stop() error {
 
 func (a *OKWSAgent) finalize() error {
 	defer func() {
-		log.Debugf("Finalize End. Connection to WebSocket is closed.")
+		log.Info("Finalize End. Connection to WebSocket is closed.")
 	}()
 
 	select {
 	case <-a.stopCh:
 		if a.conn != nil {
 			close(a.errCh)
-			close(a.wsTbCh)
-			close(a.wsEvtCh)
-			close(a.wsErrCh)
+			close(a.wsCh)
 			return a.conn.Close()
 		}
 	}
@@ -200,26 +179,13 @@ func (a *OKWSAgent) GzipDecode(in []byte) ([]byte, error) {
 	return ioutil.ReadAll(reader)
 }
 
-func (a *OKWSAgent) handleErrResponse(r interface{}) error {
-	log.Debugf("handleErrResponse %+v \n", r)
-	return nil
-}
-
-func (a *OKWSAgent) handleEventResponse(r interface{}) error {
-	er := r.(*WSEventResponse)
-	a.activeChannels[er.Channel] = (er.Event == CHNL_EVENT_SUBSCRIBE)
-	return nil
-}
-
-func (a *OKWSAgent) handleTableResponse(r interface{}) error {
+func (a *OKWSAgent) handleResponse(r interface{}) error {
 	channel := ""
 	switch r.(type) {
 	case *WSOrdersResponse:
 		channel = r.(*WSOrdersResponse).Arg.Channel
-	case *WSTableResponse:
-		channel = r.(*WSTableResponse).Table
-	case *WSDepthTableResponse:
-		channel = r.(*WSDepthTableResponse).Table
+	default:
+		return nil
 	}
 
 	cbs := a.subMap[channel]
@@ -227,9 +193,6 @@ func (a *OKWSAgent) handleTableResponse(r interface{}) error {
 		for i := 0; i < len(cbs); i++ {
 			cb := cbs[i]
 			go cb(r)
-			// if err := cb(r); err != nil {
-			// 	return err
-			// }
 		}
 	}
 	return nil
@@ -237,9 +200,7 @@ func (a *OKWSAgent) handleTableResponse(r interface{}) error {
 
 func (a *OKWSAgent) work() {
 	defer func() {
-		a := recover()
-		log.Debugf("Work End. Recover msg: %+v", a)
-		debug.PrintStack()
+		log.Info("Work End.")
 	}()
 
 	defer a.Stop()
@@ -251,14 +212,8 @@ func (a *OKWSAgent) work() {
 		select {
 		case <-ticker.C:
 			a.keepalive()
-		case errR := <-a.wsErrCh:
-			a.handleErrResponse(errR)
-		case evtR := <-a.wsEvtCh:
-			a.handleEventResponse(evtR)
-		case tb := <-a.wsTbCh:
-			a.handleTableResponse(tb)
-		case <-a.signalCh:
-			break
+		case tb := <-a.wsCh:
+			a.handleResponse(tb)
 		case err := <-a.errCh:
 			c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
 			if err != nil {
@@ -277,11 +232,7 @@ func (a *OKWSAgent) work() {
 
 func (a *OKWSAgent) receive() {
 	defer func() {
-		a := recover()
-		if a != nil {
-			log.Debugf("Receive End. Recover msg: %+v", a)
-			debug.PrintStack()
-		}
+		log.Info("Receive End.")
 	}()
 
 	for {
@@ -303,48 +254,19 @@ func (a *OKWSAgent) receive() {
 		}
 
 		rsp, err := loadResponse(txtMsg)
+		if err != nil {
+			continue
+		}
 		if rsp != nil {
 			if a.config.IsPrint {
 				log.Debugf("LoadedRep: %+v, err: %+v", rsp, err)
 			}
 		}
 
-		if err != nil {
-			continue
-		}
-
 		switch rsp.(type) {
-		case *WSErrorResponse:
-			a.wsErrCh <- rsp
-		case *WSEventResponse:
-			er := rsp.(*WSEventResponse)
-			a.wsEvtCh <- er
-		case *WSDepthTableResponse:
-			var err error
-			dtr := rsp.(*WSDepthTableResponse)
-			hotDepths := a.hotDepthsMap[dtr.Table]
-			if hotDepths == nil {
-				hotDepths = NewWSHotDepths(dtr.Table)
-				err = hotDepths.loadWSDepthTableResponse(dtr)
-				if err == nil {
-					a.hotDepthsMap[dtr.Table] = hotDepths
-				}
-			} else {
-				err = hotDepths.loadWSDepthTableResponse(dtr)
-			}
-
-			if err == nil {
-				a.wsTbCh <- dtr
-			} else {
-				log.Debugf("Failed to loadWSDepthTableResponse, dtr: %+v, err: %+v", dtr, err)
-			}
-
-		case *WSTableResponse:
-			tb := rsp.(*WSTableResponse)
-			a.wsTbCh <- tb
 		case *WSOrdersResponse:
 			ord := rsp.(*WSOrdersResponse)
-			a.wsTbCh <- ord
+			a.wsCh <- ord
 		default:
 			//log.Println(rsp)
 		}
