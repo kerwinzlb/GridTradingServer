@@ -20,7 +20,6 @@ import (
 type Server struct {
 	conf         *okex.Config
 	instId       string
-	last         string
 	sz           string
 	tickSzN      int
 	lotSzN       int
@@ -58,12 +57,6 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	ticRes, err := s.restClient.GetMarketTicker(s.instId)
-	if err != nil {
-		return nil, err
-	}
-	s.last = ticRes.Data[0].Last
-	s.insertTicker(ticRes.Data[0].InstId, ticRes.Data[0].Last, ticRes.Data[0].Ts)
 	pubRes, err := s.restClient.GetPublicInstruments("SPOT", "", s.instId)
 	if err != nil {
 		return nil, err
@@ -71,8 +64,6 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 	s.tickSzN = common.FloatRoundLen(pubRes.Data[0].TickSz)
 	s.lotSzN = common.FloatRoundLen(pubRes.Data[0].LotSz)
 	s.minSzN = common.FloatRoundLen(pubRes.Data[0].MinSz)
-	pric, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
-	s.sz = strconv.FormatFloat(s.conf.Amount/pric, 'f', s.lotSzN, 64)
 	return s, nil
 }
 
@@ -88,19 +79,27 @@ func (s *Server) newMgo() error {
 	return nil
 }
 
-func (s *Server) insertTicker(instid, last, ts string) error {
+func (s *Server) insertTicker(ticket okex.Ticket) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	collection := s.mgoClient.Database(s.conf.MgoDBName).Collection(s.conf.MgoCollectionName[1])
-	collection.InsertOne(ctx, bson.M{"instid": instid, "last": last, "ts": ts})
+	last, _ := strconv.ParseFloat(ticket.Last, 64)
+	ts, _ := strconv.ParseInt(ticket.Ts, 10, 64)
+	collection.InsertOne(ctx, bson.M{"instid": ticket.InstId, "last": last, "ts": ts})
 	return nil
 }
 
-func (s *Server) insertOrders(index int, instid, side, px, sz, avgPx, fee, fillTime, cTime string) error {
+func (s *Server) insertOrders(index int, order okex.DataOrder) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	collection := s.mgoClient.Database(s.conf.MgoDBName).Collection(s.conf.MgoCollectionName[0])
-	collection.InsertOne(ctx, bson.M{"index": index, "instid": instid, "side": side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
+	px, _ := strconv.ParseFloat(order.Px, 64)
+	sz, _ := strconv.ParseFloat(order.Sz, 64)
+	avgPx, _ := strconv.ParseFloat(order.AvgPx, 64)
+	fee, _ := strconv.ParseFloat(order.Fee, 64)
+	fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
+	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
+	collection.InsertOne(ctx, bson.M{"index": index, "instid": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 	return nil
 }
 
@@ -117,7 +116,14 @@ func (s *Server) Start() error {
 	}
 	log.Info("websocket Subscribe success")
 
-	last, _ := strconv.ParseFloat(s.last, 64)
+	ticRes, err := s.restClient.GetMarketTicker(s.instId)
+	if err != nil {
+		return err
+	}
+	pric, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
+	s.sz = strconv.FormatFloat(s.conf.Amount/pric, 'f', s.lotSzN, 64)
+	s.insertTicker(ticRes.Data[0])
+	last, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
 	index := 0
 	for i := s.gridNum; i > 0; i-- {
 		px := strconv.FormatFloat(last/math.Pow(s.gridSize, float64(i)), 'f', s.tickSzN, 64)
@@ -162,13 +168,11 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 		if res.Data[0].State == "filled" {
 			clOrdId, _ := hex.DecodeString(res.Data[0].ClOrdId)
 			index, _ := strconv.Atoi(string(clOrdId))
-			s.insertOrders(index, res.Data[0].InstId, res.Data[0].Side, res.Data[0].Px, res.Data[0].Sz, res.Data[0].AvgPx, res.Data[0].Fee, res.Data[0].FillTime, res.Data[0].CTime)
-			sellPri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
-			buyPri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
+			s.insertOrders(index, res.Data[0])
+			pri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
 			if res.Data[0].Side == "buy" {
 				log.Debug("买单成交")
-				sellPri = sellPri * s.gridSize
-				px := strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
+				px := strconv.FormatFloat(pri*s.gridSize, 'f', s.tickSzN, 64)
 				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
 				_, px, err := s.PostSellTradeOrder(clOrdId, px, s.sz)
 				if err != nil {
@@ -177,11 +181,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				}
 				log.Debug("买单成交，挂卖单成功")
 
-				for i := 0; i < s.gridNum; i++ {
-					buyPri = buyPri / s.gridSize
-					sellPri = sellPri * s.gridSize
-				}
-				px = strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
+				px = strconv.FormatFloat(pri/math.Pow(s.gridSize, float64(s.gridNum)), 'f', s.tickSzN, 64)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
 				_, px, err = s.PostBuyTradeOrder(clOrdId, px, s.sz)
 				if err != nil {
@@ -189,7 +189,6 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					return err
 				}
 				log.Debug("买单成交，挂买单成功")
-				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64), "0"), ".")
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum + 1)))
 				_, err = s.restClient.PostTradeCancelOrder(s.instId, "", clOrdId)
 				if err != nil {
@@ -199,8 +198,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				log.Debug("买单成交，撤销卖单成功")
 			} else if res.Data[0].Side == "sell" {
 				log.Debug("卖单成交")
-				buyPri = buyPri / s.gridSize
-				px := strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
+				px := strconv.FormatFloat(pri/s.gridSize, 'f', s.tickSzN, 64)
 				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
 				_, px, err := s.PostBuyTradeOrder(clOrdId, px, s.sz)
 				if err != nil {
@@ -208,11 +206,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					return err
 				}
 				log.Debug("卖单成交，挂买单成功")
-				for i := 0; i < s.gridNum; i++ {
-					buyPri = buyPri / s.gridSize
-					sellPri = sellPri * s.gridSize
-				}
-				px = strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
+				px = strconv.FormatFloat(pri*math.Pow(s.gridSize, float64(s.gridSize)), 'f', s.tickSzN, 64)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
 				_, px, err = s.PostSellTradeOrder(clOrdId, px, s.sz)
 				if err != nil {
@@ -220,7 +214,6 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					return err
 				}
 				log.Debug("卖单成交，挂卖单成功")
-				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64), "0"), ".")
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum - 1)))
 				_, err = s.restClient.PostTradeCancelOrder(s.instId, "", clOrdId)
 				if err != nil {
