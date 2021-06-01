@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/hex"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -104,28 +105,6 @@ func (s *Server) insertOrders(index int, instid, side, px, sz, avgPx, fee, fillT
 }
 
 func (s *Server) Start() error {
-	buyPri, _ := strconv.ParseFloat(s.last, 64)
-	sellPri, _ := strconv.ParseFloat(s.last, 64)
-	index := 0
-	for i := 0; i < s.gridNum; i++ {
-		buyPri = buyPri / s.gridSize
-		px := strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
-		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - (i + 1))))
-		_, px, err := s.PostBuyTradeOrder(clOrdId, px, s.sz)
-		if err != nil {
-			return err
-		}
-		// s.setGridMap(index-(i+1), ordId)
-
-		sellPri = sellPri * s.gridSize
-		px = strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
-		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + (i + 1))))
-		_, px, err = s.PostSellTradeOrder(clOrdId, px, s.sz)
-		if err != nil {
-			return err
-		}
-		// s.setGridMap(index+(i+1), ordId)
-	}
 	s.wsClient.Start(s.conf)
 	err := s.wsClient.Login(s.conf.ApiKey, s.conf.Passphrase)
 	if err != nil {
@@ -137,6 +116,24 @@ func (s *Server) Start() error {
 		return err
 	}
 	log.Info("websocket Subscribe success")
+
+	last, _ := strconv.ParseFloat(s.last, 64)
+	index := 0
+	for i := s.gridNum; i > 0; i-- {
+		px := strconv.FormatFloat(last/math.Pow(s.gridSize, float64(i)), 'f', s.tickSzN, 64)
+		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - i)))
+		_, px, err := s.PostBuyTradeOrder(clOrdId, px, s.sz)
+		if err != nil {
+			return err
+		}
+
+		px = strconv.FormatFloat(last*math.Pow(s.gridSize, float64(i)), 'f', s.tickSzN, 64)
+		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + i)))
+		_, px, err = s.PostSellTradeOrder(clOrdId, px, s.sz)
+		if err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -170,7 +167,6 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 			buyPri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
 			if res.Data[0].Side == "buy" {
 				log.Debug("买单成交")
-				//增加一个卖单
 				sellPri = sellPri * s.gridSize
 				px := strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
 				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
@@ -179,14 +175,12 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					log.Error("买单成交，挂卖单失败", "error", err)
 					return err
 				}
-				// s.setGridMap(index+1, ordId)
 				log.Debug("买单成交，挂卖单成功")
 
 				for i := 0; i < s.gridNum; i++ {
 					buyPri = buyPri / s.gridSize
 					sellPri = sellPri * s.gridSize
 				}
-				//增加一个买单
 				px = strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
 				_, px, err = s.PostBuyTradeOrder(clOrdId, px, s.sz)
@@ -194,22 +188,17 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					log.Error("买单成交，挂买单失败", "error", err)
 					return err
 				}
-				// s.setGridMap(index-s.gridNum, ordId)
 				log.Debug("买单成交，挂买单成功")
-				//撤销一个卖单
 				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64), "0"), ".")
-				// OrdId := s.getGridOrdidMap(index + s.gridNum + 1)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum + 1)))
 				_, err = s.restClient.PostTradeCancelOrder(s.instId, "", clOrdId)
 				if err != nil {
 					log.Error("买单成交，撤销卖单失败", "error", err)
 					return err
 				}
-				// s.deleteGridMap(index+s.gridNum+1, OrdId)
 				log.Debug("买单成交，撤销卖单成功")
 			} else if res.Data[0].Side == "sell" {
 				log.Debug("卖单成交")
-				//增加一个买单
 				buyPri = buyPri / s.gridSize
 				px := strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64)
 				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
@@ -218,13 +207,11 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					log.Error("卖单成交，挂买单失败", "error", err)
 					return err
 				}
-				// s.setGridMap(index-1, ordId)
 				log.Debug("卖单成交，挂买单成功")
 				for i := 0; i < s.gridNum; i++ {
 					buyPri = buyPri / s.gridSize
 					sellPri = sellPri * s.gridSize
 				}
-				//增加一个卖单
 				px = strconv.FormatFloat(sellPri, 'f', s.tickSzN, 64)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
 				_, px, err = s.PostSellTradeOrder(clOrdId, px, s.sz)
@@ -232,18 +219,14 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					log.Error("卖单成交，挂卖单失败", "error", err)
 					return err
 				}
-				// s.setGridMap(index+s.gridNum, ordId)
 				log.Debug("卖单成交，挂卖单成功")
-				//撤销一个买单
 				px = strings.TrimRight(strings.TrimRight(strconv.FormatFloat(buyPri, 'f', s.tickSzN, 64), "0"), ".")
-				// OrdId := s.getGridOrdidMap(index - s.gridNum - 1)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum - 1)))
 				_, err = s.restClient.PostTradeCancelOrder(s.instId, "", clOrdId)
 				if err != nil {
 					log.Error("卖单成交，撤销买单失败", "error", err)
 					return err
 				}
-				// s.deleteGridMap(index-s.gridNum-1, OrdId)
 				log.Debug("卖单成交，撤销买单成功")
 			}
 		}
@@ -268,7 +251,6 @@ func (s *Server) PostTradeCancelBatchOrders(ordIds, clOrdIds []string) error {
 }
 
 func (s *Server) PostBuyTradeOrder(clOrdId, px, sz string) (string, string, error) {
-	// log.Debug("PostBuyTradeOrder px sz", px, sz)
 	req := okex.NewParams()
 	req["instId"] = s.instId
 	req["tdMode"] = "cash"
@@ -284,7 +266,6 @@ func (s *Server) PostBuyTradeOrder(clOrdId, px, sz string) (string, string, erro
 }
 
 func (s *Server) PostSellTradeOrder(clOrdId, px, sz string) (string, string, error) {
-	// log.Debug("PostSellTradeOrder px sz", px, sz)
 	req := okex.NewParams()
 	req["instId"] = s.instId
 	req["tdMode"] = "cash"
