@@ -63,19 +63,7 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 	return s, nil
 }
 
-func (s *Server) Start() error {
-	s.wsClient.Start(s.conf)
-	err := s.wsClient.Login(s.conf.ApiKey, s.conf.Passphrase)
-	if err != nil {
-		return err
-	}
-	log.Info("websocket Login success")
-	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, "SPOT", s.ReceivedOrdersDataCallback)
-	if err != nil {
-		return err
-	}
-	log.Info("websocket Subscribe success")
-
+func (s *Server) initPostOrder() error {
 	ticRes, err := s.restClient.GetMarketTicker(s.instId)
 	if err != nil {
 		return err
@@ -103,6 +91,26 @@ func (s *Server) Start() error {
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (s *Server) Start() error {
+	s.wsClient.Start(s.conf)
+	err := s.wsClient.Login(s.conf.ApiKey, s.conf.Passphrase)
+	if err != nil {
+		return err
+	}
+	log.Info("websocket Login success")
+	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, "SPOT", s.ReceivedOrdersDataCallback)
+	if err != nil {
+		return err
+	}
+	log.Info("websocket Subscribe success")
+
+	err = s.initPostOrder()
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -251,7 +259,11 @@ func (s *Server) Stop() error {
 	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, "SPOT")
 	s.wsClient.Stop()
 
-	trdp, err := s.restClient.GetTradeOrdersPending(okex.NewReqParams())
+	req := okex.NewReqParams()
+	req.AddParam("instType", "SPOT")
+	req.AddParam("instId", s.instId)
+	req.AddParam("ordType", "post_only")
+	trdp, err := s.restClient.GetTradeOrdersPending(req)
 	if err != nil {
 		log.Error("Server stop", "GetTradeOrdersPending err", err)
 	}
