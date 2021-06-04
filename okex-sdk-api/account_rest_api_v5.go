@@ -19,3 +19,21 @@ func (client *Client) GetAccountBalance(currency string) (*map[string]interface{
 	}
 	return &r, nil
 }
+
+/*
+查看账户配置
+查看当前账户的配置信息。
+
+限速：5次/2s
+HTTP请求
+GET /api/v5/account/config
+*/
+
+func (client *Client) GetAccountConfig() (*map[string]interface{}, error) {
+	r := map[string]interface{}{}
+
+	if _, err := client.Request(GET, ACCOUNT_CONFIG, nil, &r); err != nil {
+		return nil, err
+	}
+	return &r, nil
+}

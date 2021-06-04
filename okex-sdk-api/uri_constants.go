@@ -9,6 +9,7 @@ package okex
 
 const (
 	ACCOUNT_BALANCE = "/api/v5/account/balance"
+	ACCOUNT_CONFIG  = "/api/v5/account/config"
 
 	MARKET_TICKERS = "/api/v5/market/tickers"
 	MARKET_TICKER  = "/api/v5/market/ticker"
