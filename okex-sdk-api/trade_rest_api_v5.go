@@ -356,13 +356,13 @@ func (client *Client) GetTradeOrder(instId, ordId, clOrdId string) (*map[string]
 HTTP请求
 GET /api/v5/trade/orders-pending
 */
-func (client *Client) GetTradeOrdersPending(req *ReqParams) (*map[string]interface{}, error) {
-	r := map[string]interface{}{}
+func (client *Client) GetTradeOrdersPending(req *ReqParams) (*PendingOrderResult, error) {
+	r := new(PendingOrderResult)
 
 	url := BuildParams(TRADE_ORDERS_PENDING, req.Params())
 	if _, err := client.Request(GET, url, nil, &r); err != nil {
 		return nil, err
 	}
 
-	return &r, nil
+	return r, nil
 }

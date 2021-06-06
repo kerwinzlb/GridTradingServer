@@ -19,3 +19,8 @@ type OrderResult struct {
 	PublicResult
 	Data []Order
 }
+
+type PendingOrderResult struct {
+	PublicResult
+	Data []DataOrder
+}

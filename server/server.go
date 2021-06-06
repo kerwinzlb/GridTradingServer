@@ -348,25 +348,19 @@ func (s *Server) CancelAllOrders() {
 	if err != nil {
 		log.Error("CancelAllOrders", "GetTradeOrdersPending err", err)
 	}
-	for key, val := range *trdp {
-		if key == "data" {
-			orders := val.([]map[string]string)
-			for _, order := range orders {
-				_, err := s.restClient.PostTradeCancelOrder(s.instId, order["ordId"], "")
-				if err != nil {
-					log.Error("CancelAllOrders", "PostTradeCancelOrder err", err)
-				}
-			}
-			break
+	for _, order := range trdp.Data {
+		_, err := s.restClient.PostTradeCancelOrder(s.instId, order.OrdId, "")
+		if err != nil {
+			log.Error("CancelAllOrders", "PostTradeCancelOrder err", err)
 		}
 	}
 }
 
 func (s *Server) Stop() error {
+	s.CancelAllOrders()
 	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, okex.MARGIN)
 	s.wsClient.Stop()
 
-	s.CancelAllOrders()
 	s.mgo.DisConnect()
 	s.status.Store(0)
 	return nil
