@@ -123,7 +123,7 @@ func (s *Server) initPostOrder() error {
 
 func (s *Server) GetMgoConfig() (Config, error) {
 	conf := new(Config)//TODO:need to test!!!!
-	err := s.mgo.FindOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instid": s.instId}, conf)
+	err := s.mgo.FindOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, conf)
 	if err != nil {
 		return Config{}, err
 	}
@@ -193,7 +193,7 @@ func (s *Server) Start() error {
 func (s *Server) InsertTicker(ticket okex.Ticket) error {
 	last, _ := strconv.ParseFloat(ticket.Last, 64)
 	ts, _ := strconv.ParseInt(ticket.Ts, 10, 64)
-	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"instid": ticket.InstId, "last": last, "ts": ts})
+	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"instId": ticket.InstId, "last": last, "ts": ts})
 	if err != nil {
 		log.Error("InsertTicker", "error", err)
 		return err
@@ -208,7 +208,7 @@ func (s *Server) InsertOrder(index int, order okex.DataOrder) error {
 	fee, _ := strconv.ParseFloat(order.Fee, 64)
 	fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
 	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
-	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"index": index, "instid": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
+	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"index": index, "instId": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 	if err != nil {
 		log.Error("InsertOrder", "error", err)
 		return err
