@@ -29,11 +29,24 @@ type OKWSAgent struct {
 	errCh  chan error
 
 	subMap     map[string]ReceivedDataCallback
+	extStop    ErrorCallback
 	processMut sync.Mutex
 }
 
-func (a *OKWSAgent) Start(config *Config) error {
-	a.baseUrl = config.WSEndpoint
+func NewAgent(config *Config, f ErrorCallback) *OKWSAgent {
+	a := &OKWSAgent{
+		baseUrl: config.WSEndpoint,
+		config:  config,
+		wsCh:    make(chan interface{}, 10),
+		errCh:   make(chan error),
+		stopCh:  make(chan interface{}, 16),
+		subMap:  make(map[string]ReceivedDataCallback),
+		extStop: f,
+	}
+	return a
+}
+
+func (a *OKWSAgent) Start() error {
 	log.Debugf("Connecting to %s", a.baseUrl)
 	c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
 
@@ -41,17 +54,10 @@ func (a *OKWSAgent) Start(config *Config) error {
 		log.Errorf("websocket dial:%+v", err)
 		return err
 	} else {
-		if config.IsPrint {
+		if a.config.IsPrint {
 			log.Debugf("Connected to %s success", a.baseUrl)
 		}
 		a.conn = c
-		a.config = config
-
-		a.wsCh = make(chan interface{})
-		a.errCh = make(chan error)
-		a.stopCh = make(chan interface{}, 16)
-		a.subMap = make(map[string]ReceivedDataCallback)
-
 		go a.work()
 		go a.receive()
 		go a.finalize()
@@ -203,15 +209,8 @@ func (a *OKWSAgent) work() {
 			a.keepalive()
 		case tb := <-a.wsCh:
 			a.handleResponse(tb)
-		case err := <-a.errCh:
-			c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
-			if err != nil {
-				log.Errorf("websocket dial:%+v", err)
-			} else {
-				a.conn = c
-				a.Login(a.config.ApiKey, a.config.Passphrase)
-				a.Subscribe(CHNL_OEDERS, "SPOT", nil)
-			}
+		case <-a.errCh:
+			a.extStop()
 		case <-a.stopCh:
 			return
 

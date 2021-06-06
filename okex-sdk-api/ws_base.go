@@ -362,6 +362,8 @@ func loadResponse(rspMsg []byte) (interface{}, error) {
 
 type ReceivedDataCallback func(interface{}) error
 
+type ErrorCallback func() error
+
 func defaultPrintData(obj interface{}) error {
 	switch obj.(type) {
 	case string:

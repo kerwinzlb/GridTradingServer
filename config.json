@@ -7,8 +7,5 @@
 	"Passphrase":"",
 	"TimeoutSecond": 45,
 	"IsPrint": false,
-	"I18n":"en_US",
-	"Amount":15,
-	"GridSize":0.007,
-	"GridNum":1
+	"I18n":"en_US"
 }

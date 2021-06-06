@@ -35,7 +35,7 @@ func waitToExit(server *server.Server) {
 		s := <-c
 		if s == syscall.SIGINT || s == syscall.SIGKILL || s == syscall.SIGTERM {
 			log.Info("waitToExit", "get signal:", s)
-			server.Stop()
+			server.Exit()
 		}
 	}
 }
@@ -65,6 +65,7 @@ func gridTradingServer(ctx *cli.Context) {
 	}
 	log.Info("server.New success")
 	go waitToExit(gridServer)
+	go gridServer.Monitor()
 	err = gridServer.Start()
 	if err != nil {
 		log.Errorf("server.Start error:%v\n", err)

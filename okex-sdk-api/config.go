@@ -38,12 +38,6 @@ type Config struct {
 	IsPrint bool
 	// Internationalization @see file: constants.go
 	I18n string
-	//交易金额
-	Amount float64
-	//格子区间 百分比
-	GridSize float64
-	//格子数量
-	GridNum int
 }
 
 // GetConfiguration: read config from .json file

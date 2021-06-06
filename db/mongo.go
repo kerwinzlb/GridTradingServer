@@ -47,10 +47,25 @@ func (m *Mongo) Insert(mgoDBName, mgoCollectionName string, bm bson.M) error {
 	_, err := collection.InsertOne(ctx, bm)
 	if err != nil {
 		m.Connect()
+		_, err = collection.InsertOne(ctx, bm)
+		if err != nil {
+			return err
+		}
 	}
-	_, err = collection.InsertOne(ctx, bm)
+	return nil
+}
+
+func (m *Mongo) FindOne(mgoDBName, mgoCollectionName string, bm bson.M, result interface{}) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	collection := m.mgoClient.Database(mgoDBName).Collection(mgoCollectionName)
+	err := collection.FindOne(ctx, bm).Decode(result)
 	if err != nil {
-		return err
+		m.Connect()
+		err = collection.FindOne(ctx, bm).Decode(result)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
