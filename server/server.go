@@ -4,12 +4,12 @@ import (
 	"encoding/hex"
 	"math"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
-	"time"
 	"sync"
 	"sync/atomic"
-	"reflect"
+	"time"
 
 	"github.com/kerwinzlb/GridTradingServer/common"
 	"github.com/kerwinzlb/GridTradingServer/db"
@@ -26,18 +26,18 @@ const (
 )
 
 type Server struct {
-	conf         *okex.Config
-	mgoConf      atomic.Value
-	instId       string
-	tickSzN      int
-	lotSzN       int
-	minSzN       int
-	gridNum      int
-	restClient   *okex.Client
-	wsClient     *okex.OKWSAgent
-	mgo          *db.Mongo
-	status       atomic.Value
-	lock         *sync.RWMutex
+	conf       *okex.Config
+	mgoConf    atomic.Value
+	instId     string
+	tickSzN    int
+	lotSzN     int
+	minSzN     int
+	gridNum    int
+	restClient *okex.Client
+	wsClient   *okex.OKWSAgent
+	mgo        *db.Mongo
+	status     atomic.Value
+	lock       *sync.RWMutex
 
 	stop chan struct{} // Channel to wait for termination notifications
 }
@@ -45,12 +45,12 @@ type Server struct {
 func New(instId string, conf *okex.Config) (*Server, error) {
 	confCopy := *conf
 	s := &Server{
-		conf:         &confCopy,
-		instId:       instId,
-		restClient:   okex.NewClient(*conf),
-		mgo:          db.NewMgo(conf.MgoEndpoint),
-		lock:         new(sync.RWMutex),
-		stop:         make(chan struct{}),
+		conf:       &confCopy,
+		instId:     instId,
+		restClient: okex.NewClient(*conf),
+		mgo:        db.NewMgo(conf.MgoEndpoint),
+		lock:       new(sync.RWMutex),
+		stop:       make(chan struct{}),
 	}
 
 	s.wsClient = okex.NewAgent(conf, s.Stop)
@@ -101,7 +101,7 @@ func (s *Server) initPostOrder() error {
 	index := 0
 	conf := s.mgoConf.Load().(Config)
 	for i := s.gridNum; i > 0; i-- {
-		pric := last/math.Pow((1+conf.BuyGridSize), float64(i))
+		pric := last / math.Pow((1+conf.BuyGridSize), float64(i))
 		px, sz := s.getSz(pric, "buy", conf)
 		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - i)))
 		_, err := s.PostBuyTradeOrder(clOrdId, px, sz)
@@ -109,7 +109,7 @@ func (s *Server) initPostOrder() error {
 			return err
 		}
 
-		pric = last*math.Pow((1+conf.SellGridSize), float64(i))
+		pric = last * math.Pow((1+conf.SellGridSize), float64(i))
 		px, sz = s.getSz(pric, "sell", conf)
 		px = strconv.FormatFloat(pric, 'f', s.tickSzN, 64)
 		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + i)))
@@ -122,7 +122,7 @@ func (s *Server) initPostOrder() error {
 }
 
 func (s *Server) GetMgoConfig() (Config, error) {
-	conf := new(Config)//TODO:need to test!!!!
+	conf := new(Config)
 	err := s.mgo.FindOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, conf)
 	if err != nil {
 		return Config{}, err
@@ -170,7 +170,7 @@ func (s *Server) Start() error {
 		return err
 	}
 	log.Info("websocket Login success")
-	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, okex.MARGIN, s.ReceivedOrdersDataCallback)
+	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, okex.SPOT, s.ReceivedOrdersDataCallback)
 	if err != nil {
 		return err
 	}
@@ -208,7 +208,7 @@ func (s *Server) InsertOrder(index int, order okex.DataOrder) error {
 	fee, _ := strconv.ParseFloat(order.Fee, 64)
 	fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
 	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
-	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"index": index, "instId": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
+	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"index": index, "instId": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 	if err != nil {
 		log.Error("InsertOrder", "error", err)
 		return err
@@ -221,18 +221,18 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 	if len(res.Data) == 0 {
 		return nil
 	}
-	if res.Data[0].Code == "0" && res.Data[0].InstType == okex.MARGIN && res.Data[0].InstId == s.instId && res.Data[0].OrdType == "post_only" {
+	if res.Data[0].Code == "0" && res.Data[0].InstType == okex.SPOT && res.Data[0].InstId == s.instId && res.Data[0].OrdType == "post_only" {
 		if res.Data[0].State == "filled" {
 			conf := s.mgoConf.Load().(Config)
-			buyGridSize := 1+conf.BuyGridSize
-			sellGridSize := 1+conf.SellGridSize
+			buyGridSize := 1 + conf.BuyGridSize
+			sellGridSize := 1 + conf.SellGridSize
 			clOrdId, _ := hex.DecodeString(res.Data[0].ClOrdId)
 			index, _ := strconv.Atoi(string(clOrdId))
 			go s.InsertOrder(index, res.Data[0])
 			pri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
 			if res.Data[0].Side == "buy" {
 				log.Debug("买单成交")
-				pric := pri*sellGridSize
+				pric := pri * sellGridSize
 				px, sz := s.getSz(pric, "sell", conf)
 				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
 				_, err := s.PostSellTradeOrder(clOrdId, px, sz)
@@ -242,7 +242,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				}
 				log.Debug("买单成交，挂卖单成功")
 
-				pric = pri/math.Pow(buyGridSize, float64(s.gridNum))
+				pric = pri / math.Pow(buyGridSize, float64(s.gridNum))
 				px, sz = s.getSz(pric, "buy", conf)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
 				_, err = s.PostBuyTradeOrder(clOrdId, px, sz)
@@ -260,7 +260,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 				log.Debug("买单成交，撤销卖单成功")
 			} else if res.Data[0].Side == "sell" {
 				log.Debug("卖单成交")
-				pric := pri/buyGridSize
+				pric := pri / buyGridSize
 				px, sz := s.getSz(pric, "buy", conf)
 				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
 				_, err := s.PostBuyTradeOrder(clOrdId, px, sz)
@@ -269,7 +269,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 					return err
 				}
 				log.Debug("卖单成交，挂买单成功")
-				pric = pri*math.Pow(sellGridSize, float64(s.gridNum))
+				pric = pri * math.Pow(sellGridSize, float64(s.gridNum))
 				px, sz = s.getSz(pric, "sell", conf)
 				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
 				_, err = s.PostSellTradeOrder(clOrdId, px, sz)
@@ -310,8 +310,9 @@ func (s *Server) PostTradeCancelBatchOrders(ordIds, clOrdIds []string) error {
 func (s *Server) PostBuyTradeOrder(clOrdId, px, sz string) (string, error) {
 	req := okex.NewParams()
 	req["instId"] = s.instId
-	req["tdMode"] = "cross"
-	req["ccy"] = "USDT"
+	req["tdMode"] = "cash"
+	// req["ccy"] = "USDT"
+	req["clOrdId"] = clOrdId
 	req["side"] = "buy"
 	req["ordType"] = "post_only"
 	req["px"] = strings.TrimRight(strings.TrimRight(px, "0"), ".")
@@ -326,8 +327,9 @@ func (s *Server) PostBuyTradeOrder(clOrdId, px, sz string) (string, error) {
 func (s *Server) PostSellTradeOrder(clOrdId, px, sz string) (string, error) {
 	req := okex.NewParams()
 	req["instId"] = s.instId
-	req["tdMode"] = "cross"
-	req["ccy"] = "USDT"
+	req["tdMode"] = "cash"
+	// req["ccy"] = "USDT"
+	req["clOrdId"] = clOrdId
 	req["side"] = "sell"
 	req["ordType"] = "post_only"
 	req["px"] = strings.TrimRight(strings.TrimRight(px, "0"), ".")
@@ -341,7 +343,7 @@ func (s *Server) PostSellTradeOrder(clOrdId, px, sz string) (string, error) {
 
 func (s *Server) CancelAllOrders() {
 	req := okex.NewReqParams()
-	req.AddParam("instType", okex.MARGIN)
+	req.AddParam("instType", okex.SPOT)
 	req.AddParam("instId", s.instId)
 	req.AddParam("ordType", "post_only")
 	trdp, err := s.restClient.GetTradeOrdersPending(req)
@@ -358,7 +360,7 @@ func (s *Server) CancelAllOrders() {
 
 func (s *Server) Stop() error {
 	s.CancelAllOrders()
-	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, okex.MARGIN)
+	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, okex.SPOT)
 	s.wsClient.Stop()
 
 	s.mgo.DisConnect()
