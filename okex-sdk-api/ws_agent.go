@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"io/ioutil"
+	"runtime/debug"
 
 	"github.com/gorilla/websocket"
 	"github.com/kerwinzlb/GridTradingServer/log"
@@ -195,7 +196,9 @@ func (a *OKWSAgent) handleResponse(r interface{}) error {
 
 func (a *OKWSAgent) work() {
 	defer func() {
-		log.Info("Work End.")
+		a := recover()
+		log.Infof("Work End. Recover msg: %+v", a)
+		debug.PrintStack()
 	}()
 
 	defer a.Stop()
@@ -220,7 +223,11 @@ func (a *OKWSAgent) work() {
 
 func (a *OKWSAgent) receive() {
 	defer func() {
-		log.Info("Receive End.")
+		a := recover()
+		if a != nil {
+			log.Infof("Receive End. Recover msg: %+v", a)
+			debug.PrintStack()
+		}
 	}()
 
 	for {

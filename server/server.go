@@ -231,6 +231,11 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 			index, _ := strconv.Atoi(string(clOrdId))
 			go s.InsertOrder(index, res.Data[0])
 			pri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
+
+			if pri <= conf.LowerLimit || pri >= conf.UpperLimit {
+				s.Stop()
+				return nil
+			}
 			if res.Data[0].Side == "buy" {
 				log.Debug("买单成交")
 				pric := pri * sellGridSize
