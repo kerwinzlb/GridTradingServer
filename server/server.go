@@ -132,12 +132,14 @@ func (s *Server) GetMgoConfig() (Config, error) {
 }
 
 func (s *Server) Monitor() {
-	ticker := time.NewTicker(15 * time.Second)
-	defer ticker.Stop()
+	mticker := time.NewTicker(15 * time.Second)
+	defer mticker.Stop()
+	rticker := time.NewTicker(30 * time.Second)
+	defer rticker.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
+		case <-mticker.C:
 			conf, err := s.GetMgoConfig()
 			if err != nil {
 				log.Error("Monitor", "GetMgoConfig err", err)
@@ -158,9 +160,22 @@ func (s *Server) Monitor() {
 					}
 				}
 			}
+		case <-rticker.C:
+			s.monitorOrder()
 		case <-s.stop:
 			return
 		}
+	}
+}
+
+func (s *Server) monitorOrder() {
+	trdp, err := s.GetTradeOrdersPending()
+	if err != nil {
+		log.Error("monitorOrder", "GetTradeOrdersPending err", err)
+	}
+	if len(trdp.Data) != s.gridNum*2 {
+		s.CancelAllOrders()
+		s.initPostOrder()
 	}
 }
 
@@ -347,12 +362,16 @@ func (s *Server) PostSellTradeOrder(clOrdId, px, sz string) (string, error) {
 	return res.Data[0].OrdId, nil
 }
 
-func (s *Server) CancelAllOrders() {
+func (s *Server) GetTradeOrdersPending() (*okex.PendingOrderResult, error) {
 	req := okex.NewReqParams()
 	req.AddParam("instType", okex.SPOT)
 	req.AddParam("instId", s.instId)
 	req.AddParam("ordType", "post_only")
-	trdp, err := s.restClient.GetTradeOrdersPending(req)
+	return s.restClient.GetTradeOrdersPending(req)
+}
+
+func (s *Server) CancelAllOrders() {
+	trdp, err := s.GetTradeOrdersPending()
 	if err != nil {
 		log.Error("CancelAllOrders", "GetTradeOrdersPending err", err)
 	}
