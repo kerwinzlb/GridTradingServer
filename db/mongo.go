@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -40,14 +39,14 @@ func (m *Mongo) DisConnect() error {
 	return nil
 }
 
-func (m *Mongo) Insert(mgoDBName, mgoCollectionName string, bm bson.M) error {
+func (m *Mongo) InsertOne(mgoDBName, mgoCollectionName string, document interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	collection := m.mgoClient.Database(mgoDBName).Collection(mgoCollectionName)
-	_, err := collection.InsertOne(ctx, bm)
+	_, err := collection.InsertOne(ctx, document)
 	if err != nil {
 		m.Connect()
-		_, err = collection.InsertOne(ctx, bm)
+		_, err = collection.InsertOne(ctx, document)
 		if err != nil {
 			return err
 		}
@@ -55,17 +54,32 @@ func (m *Mongo) Insert(mgoDBName, mgoCollectionName string, bm bson.M) error {
 	return nil
 }
 
-func (m *Mongo) FindOne(mgoDBName, mgoCollectionName string, bm bson.M, result interface{}) error {
+func (m *Mongo) FindOne(mgoDBName, mgoCollectionName string, filter, result interface{}) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	collection := m.mgoClient.Database(mgoDBName).Collection(mgoCollectionName)
-	err := collection.FindOne(ctx, bm).Decode(result)
+	err := collection.FindOne(ctx, filter).Decode(result)
 	if err != nil {
 		m.Connect()
-		err = collection.FindOne(ctx, bm).Decode(result)
+		err = collection.FindOne(ctx, filter).Decode(result)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (m *Mongo) UpdateOne(mgoDBName, mgoCollectionName string, filter, update interface{}) (*mongo.UpdateResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	collection := m.mgoClient.Database(mgoDBName).Collection(mgoCollectionName)
+	res, err := collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		m.Connect()
+		res, err = collection.UpdateOne(ctx, filter, update)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
 }

@@ -209,7 +209,7 @@ func (s *Server) Start() error {
 func (s *Server) InsertTicker(ticket okex.Ticket) error {
 	last, _ := strconv.ParseFloat(ticket.Last, 64)
 	ts, _ := strconv.ParseInt(ticket.Ts, 10, 64)
-	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"instId": ticket.InstId, "last": last, "ts": ts})
+	err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"instId": ticket.InstId, "last": last, "ts": ts})
 	if err != nil {
 		log.Error("InsertTicker", "error", err)
 		return err
@@ -224,12 +224,22 @@ func (s *Server) InsertOrder(index int, order okex.DataOrder) error {
 	fee, _ := strconv.ParseFloat(order.Fee, 64)
 	fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
 	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
-	err := s.mgo.Insert(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"index": index, "instId": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
+	err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"index": index, "instId": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 	if err != nil {
 		log.Error("InsertOrder", "error", err)
 		return err
 	}
 	return nil
+}
+
+func (s *Server) shutdown(pri float64, conf Config) {
+	if pri <= conf.LowerLimit || pri >= conf.UpperLimit {
+		s.Stop()
+		_, err := s.mgo.UpdateOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, bson.M{"status": 0})
+		if err != nil {
+			log.Error("shutdown", "UpdateOne err", err)
+		}
+	}
 }
 
 func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
@@ -246,11 +256,7 @@ func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
 			index, _ := strconv.Atoi(string(clOrdId))
 			go s.InsertOrder(index, res.Data[0])
 			pri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
-
-			if pri <= conf.LowerLimit || pri >= conf.UpperLimit {
-				s.Stop()
-				return nil
-			}
+			s.shutdown(pri, conf)
 			if res.Data[0].Side == "buy" {
 				log.Debug("买单成交")
 				pric := pri * sellGridSize
