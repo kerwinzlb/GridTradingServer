@@ -2,15 +2,21 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
+	"strconv"
 	"syscall"
 
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
+	pb "github.com/kerwinzlb/GridTradingServer/proto"
 	"github.com/kerwinzlb/GridTradingServer/utils"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -27,20 +33,28 @@ var (
 	}
 )
 
-func waitToExit(server *Server) {
+func waitToExit() {
 	c := make(chan os.Signal)
 	signal.Notify(c)
 	for {
 		s := <-c
 		if s == syscall.SIGINT || s == syscall.SIGKILL || s == syscall.SIGTERM {
 			log.Info("waitToExit", "get signal:", s)
-			server.Exit()
+			server.Stop()
+			os.Exit(1)
 		}
 	}
 }
 
-func gridServer(ctx *cli.Context) {
+func wsServer(ctx *cli.Context) {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Crit("wsServer", "server crash: ", err)
+			log.Crit("wsServer", "stack: ", string(debug.Stack()))
+		}
+	}()
 	go initLog(ctx)
+	go waitToExit()
 	configFilePath := ctx.GlobalString(utils.ConfigDirFlag.Name)
 	config, err := okex.GetConfiguration(configFilePath)
 	if err != nil {
@@ -48,30 +62,27 @@ func gridServer(ctx *cli.Context) {
 		return
 	}
 	log.Info("GetConfiguration success")
-	var instId string
-	if ctx.GlobalIsSet(utils.InstIdFlag.Name) {
-		if instId = ctx.GlobalString(utils.InstIdFlag.Name); instId == "" {
-			return
-		}
-	} else {
-		log.Error("There is no InstIdFlag")
-		return
-	}
-	gridServer, err := New(instId, config)
+
+	NewServer(config)
+	server.Start()
+
+	srvPort := ctx.GlobalInt(utils.PortFlag.Name)
+	listen, err := net.Listen("tcp", ":"+strconv.Itoa(srvPort))
 	if err != nil {
-		log.Errorf("New error:%v\n", err)
-		return
+		log.Error("tcp port error", "port", srvPort)
 	}
-	log.Info("New success")
-	go waitToExit(gridServer)
-	go gridServer.Monitor()
-	err = gridServer.Start()
-	if err != nil {
-		log.Errorf("Start error:%v\n", err)
-		return
+
+	s := grpc.NewServer()
+
+	//  注册服务
+	// 	TODO:--具体服务根据pb.go修改
+	//
+	pb.RegisterWsServer(s, server)
+	reflection.Register(s)
+	if err := s.Serve(listen); err != nil {
+		log.Error("ServiceStartFailed", "error", err)
 	}
-	log.Info("Start success")
-	gridServer.Wait()
+
 }
 
 /*
@@ -83,7 +94,7 @@ func init() {
 	app.Name = os.Args[0]
 
 	// Initialize the CLI app and start Moac
-	app.Action = gridServer
+	app.Action = wsServer
 	app.Copyright = "Copyright 2017-2018 SSN Tech Inc."
 	app.Commands = []cli.Command{}
 
@@ -99,7 +110,7 @@ func init() {
  */
 func initLog(ctx *cli.Context) error {
 	absLogPath, _ := filepath.Abs("./_logs")
-	absLogPath = absLogPath + "/gridServer"
+	absLogPath = absLogPath + "/gridTradingServer"
 	if err := os.MkdirAll(filepath.Dir(absLogPath), os.ModePerm); err != nil {
 		fmt.Errorf("Error %v in create %s", err, absLogPath)
 		return err

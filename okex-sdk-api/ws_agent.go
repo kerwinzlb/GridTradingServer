@@ -25,12 +25,11 @@ type OKWSAgent struct {
 	config  *Config
 	conn    *websocket.Conn
 
-	wsCh   chan interface{}
 	stopCh chan interface{}
 	errCh  chan error
 
-	subMap     map[string]ReceivedDataCallback
-	extStop    ErrorCallback
+	callback   ReceivedDataCallback
+	restart    ErrorCallback
 	processMut sync.Mutex
 }
 
@@ -38,11 +37,9 @@ func NewAgent(config *Config, f ErrorCallback) *OKWSAgent {
 	a := &OKWSAgent{
 		baseUrl: config.WSEndpoint,
 		config:  config,
-		wsCh:    make(chan interface{}, 10),
 		errCh:   make(chan error),
 		stopCh:  make(chan interface{}, 16),
-		subMap:  make(map[string]ReceivedDataCallback),
-		extStop: f,
+		restart: f,
 	}
 	return a
 }
@@ -84,10 +81,7 @@ func (a *OKWSAgent) Subscribe(channel, instType string, cb ReceivedDataCallback)
 	if err := a.conn.WriteMessage(websocket.TextMessage, []byte(msg)); err != nil {
 		return err
 	}
-
-	if cb != nil {
-		a.subMap[channel] = cb
-	}
+	a.callback = cb
 
 	return nil
 }
@@ -110,12 +104,10 @@ func (a *OKWSAgent) UnSubscribe(channel, instType string) error {
 		return err
 	}
 
-	a.subMap[channel] = nil
-
 	return nil
 }
 
-func (a *OKWSAgent) Login(apiKey, passphrase string) error {
+func (a *OKWSAgent) Login() error {
 
 	timestamp := EpochTime()
 
@@ -123,7 +115,7 @@ func (a *OKWSAgent) Login(apiKey, passphrase string) error {
 	if sign, err := HmacSha256Base64Signer(preHash, a.config.SecretKey); err != nil {
 		return err
 	} else {
-		op, err := loginOp(apiKey, passphrase, timestamp, sign)
+		op, err := loginOp(a.config.ApiKey, a.config.Passphrase, timestamp, sign)
 		data, err := Struct2JsonString(op)
 		err = a.conn.WriteMessage(websocket.TextMessage, []byte(data))
 		if err != nil {
@@ -157,7 +149,6 @@ func (a *OKWSAgent) finalize() error {
 	case <-a.stopCh:
 		if a.conn != nil {
 			close(a.errCh)
-			close(a.wsCh)
 			return a.conn.Close()
 		}
 	}
@@ -178,22 +169,6 @@ func (a *OKWSAgent) GzipDecode(in []byte) ([]byte, error) {
 	return ioutil.ReadAll(reader)
 }
 
-func (a *OKWSAgent) handleResponse(r interface{}) error {
-	channel := ""
-	switch r.(type) {
-	case *WSOrdersResponse:
-		channel = r.(*WSOrdersResponse).Arg.Channel
-	default:
-		return nil
-	}
-
-	cb := a.subMap[channel]
-	if cb != nil {
-		go cb(r)
-	}
-	return nil
-}
-
 func (a *OKWSAgent) work() {
 	defer func() {
 		a := recover()
@@ -210,10 +185,9 @@ func (a *OKWSAgent) work() {
 		select {
 		case <-ticker.C:
 			a.keepalive()
-		case tb := <-a.wsCh:
-			a.handleResponse(tb)
 		case <-a.errCh:
-			a.extStop()
+			a.Stop()
+			a.restart()
 		case <-a.stopCh:
 			return
 
@@ -236,34 +210,34 @@ func (a *OKWSAgent) receive() {
 			return
 		default:
 		}
-		messageType, message, err := a.conn.ReadMessage()
+		_, message, err := a.conn.ReadMessage()
 		if err != nil {
 			log.Errorf("receive() ReadMessage error:%v", err)
 			a.errCh <- err
 		}
-		txtMsg := message
-		switch messageType {
-		case websocket.TextMessage:
-		case websocket.BinaryMessage:
-			txtMsg, err = a.GzipDecode(message)
-		}
+		// txtMsg := message
+		// switch messageType {
+		// case websocket.TextMessage:
+		// case websocket.BinaryMessage:
+		// 	txtMsg, err = a.GzipDecode(message)
+		// }
+		go a.callback(message)
+		// rsp, err := loadResponse(txtMsg)
+		// if err != nil {
+		// 	continue
+		// }
+		// if rsp != nil {
+		// 	if a.config.IsPrint {
+		// 		log.Debugf("LoadedRep: %+v, err: %+v", rsp, err)
+		// 	}
+		// }
 
-		rsp, err := loadResponse(txtMsg)
-		if err != nil {
-			continue
-		}
-		if rsp != nil {
-			if a.config.IsPrint {
-				log.Debugf("LoadedRep: %+v, err: %+v", rsp, err)
-			}
-		}
-
-		switch rsp.(type) {
-		case *WSOrdersResponse:
-			ord := rsp.(*WSOrdersResponse)
-			a.wsCh <- ord
-		default:
-			//log.Println(rsp)
-		}
+		// a.wsCh <- message
+		// switch rsp.(type) {
+		// case *WSOrdersResponse:
+		// 	ord := rsp.(*WSOrdersResponse)
+		// 	a.wsCh <- ord
+		// default:
+		// 	//log.Println(rsp)
 	}
 }

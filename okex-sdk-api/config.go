@@ -26,6 +26,9 @@ type Config struct {
 	//mongo api endpoint url
 	MgoEndpoint string
 
+	WsServerAddr string //websocket server地址
+	WsServerPort int    //websocket server端口
+
 	// The user's api key provided by OKEx.
 	ApiKey string
 	// The user's secret key provided by OKEx. The secret key used to sign your request data.

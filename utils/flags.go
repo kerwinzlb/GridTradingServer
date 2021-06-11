@@ -102,6 +102,11 @@ var (
 		Usage: "Data directory for the microchain databases",
 		Value: DirectoryString{DefaultConfigDir()},
 	}
+	PortFlag = cli.IntFlag{
+		Name:  "port",
+		Usage: "sets the verbosity level, override loglevel in userconfig.json",
+		Value: 8686,
+	}
 )
 
 // DefaultConfigDir is the default data directory to use for the databases and other

@@ -360,7 +360,7 @@ func loadResponse(rspMsg []byte) (interface{}, error) {
 
 }
 
-type ReceivedDataCallback func(interface{}) error
+type ReceivedDataCallback func([]byte) error
 
 type ErrorCallback func() error
 

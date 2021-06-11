@@ -1,6 +1,7 @@
-package server
+package main
 
 import (
+	"context"
 	"encoding/hex"
 	"math"
 	"os"
@@ -15,7 +16,9 @@ import (
 	"github.com/kerwinzlb/GridTradingServer/db"
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
+	pb "github.com/kerwinzlb/GridTradingServer/proto"
 	"go.mongodb.org/mongo-driver/bson"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -34,7 +37,7 @@ type Server struct {
 	minSzN     int
 	gridNum    int
 	restClient *okex.Client
-	wsClient   *okex.OKWSAgent
+	steam      pb.Ws_GetOrderInfoClient
 	mgo        *db.Mongo
 	status     atomic.Value
 	lock       *sync.RWMutex
@@ -53,7 +56,6 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 		stop:       make(chan struct{}),
 	}
 
-	s.wsClient = okex.NewAgent(conf, s.Stop)
 	s.status.Store(0)
 	pubRes, err := s.restClient.GetPublicInstruments(okex.SPOT, "", s.instId)
 	if err != nil {
@@ -67,7 +69,37 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	mgoConf, err := s.GetMgoConfig()
+	if err != nil {
+		return nil, err
+	}
+	s.mgoConf.Store(mgoConf)
+	err = s.grpcConnect()
+	if err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+func (s *Server) grpcConnect() error {
+	conn, err := grpc.Dial(s.conf.WsServerAddr+":"+strconv.Itoa(s.conf.WsServerPort), grpc.WithInsecure())
+	defer conn.Close()
+	if err != nil {
+		log.Error("grpcConnect", "grpc.Dial err", err)
+		return err
+	}
+	c := pb.NewWsClient(conn)
+
+	req := new(pb.GetOrderRequest)
+	req.InstId = s.instId
+
+	r, err := c.GetOrderInfo(context.Background(), req)
+	if err != nil {
+		log.Error("grpcConnect", "GetOrderInfo err", err)
+		return err
+	}
+	s.steam = r
+	return nil
 }
 
 func (s *Server) getSz(pric float64, side string, conf Config) (string, string) {
@@ -179,26 +211,29 @@ func (s *Server) monitorOrder() {
 	}
 }
 
-func (s *Server) Start() error {
-	s.wsClient.Start()
-	err := s.wsClient.Login(s.conf.ApiKey, s.conf.Passphrase)
-	if err != nil {
-		return err
+func (s *Server) wsOrderRecv() {
+	for {
+		select {
+		case <-s.stop:
+			return
+		default:
+		}
+		r, err := s.steam.Recv()
+		if err != nil {
+			log.Error("wsOrderRecv", "s.steam.Recv err", err)
+			err = s.grpcConnect()
+			if err != nil {
+				log.Error("wsOrderRecv", "grpcConnect err", err)
+			}
+		}
+		go s.ReceivedOrdersDataCallback(r.Replybody)
 	}
-	log.Info("websocket Login success")
-	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, okex.SPOT, s.ReceivedOrdersDataCallback)
-	if err != nil {
-		return err
-	}
-	log.Info("websocket Subscribe success")
+}
 
-	conf, err := s.GetMgoConfig()
-	if err != nil {
-		return err
-	}
-	s.mgoConf.Store(conf)
+func (s *Server) Start() error {
+	conf := s.mgoConf.Load().(Config)
 	s.gridNum = conf.GridNum
-	err = s.initPostOrder()
+	err := s.initPostOrder()
 	if err != nil {
 		return err
 	}
@@ -242,79 +277,84 @@ func (s *Server) shutdown(pri float64, conf Config) {
 	}
 }
 
-func (s *Server) ReceivedOrdersDataCallback(obj interface{}) error {
-	res := obj.(*okex.WSOrdersResponse)
-	if len(res.Data) == 0 {
-		return nil
+func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
+	res := new(okex.WSOrdersResponse)
+	err := okex.JsonBytes2Struct(rspMsg, res)
+	if err != nil {
+		log.Error("ReceivedOrdersDataCallback", "JsonBytes2Struct err", err)
+		return err
 	}
-	if res.Data[0].Code == "0" && res.Data[0].InstType == okex.SPOT && res.Data[0].InstId == s.instId && res.Data[0].OrdType == "post_only" {
-		if res.Data[0].State == "filled" {
-			conf := s.mgoConf.Load().(Config)
-			buyGridSize := 1 + conf.BuyGridSize
-			sellGridSize := 1 + conf.SellGridSize
-			clOrdId, _ := hex.DecodeString(strings.Trim(res.Data[0].ClOrdId, s.instId))
-			index, _ := strconv.Atoi(string(clOrdId))
-			go s.InsertOrder(index, res.Data[0])
-			pri, _ := strconv.ParseFloat(res.Data[0].Px, 64)
-			s.shutdown(pri, conf)
-			if res.Data[0].Side == "buy" {
-				log.Debug("买单成交")
-				pric := pri * sellGridSize
-				px, sz := s.getSz(pric, "sell", conf)
-				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
-				_, err := s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
-				if err != nil {
-					log.Error("买单成交，挂卖单失败", "error", err)
-					return err
-				}
-				log.Debug("买单成交，挂卖单成功")
+	for _, order := range res.Data {
+		if order.Code == "0" && order.InstType == okex.SPOT && order.OrdType == "post_only" {
+			if order.State == "filled" {
+				conf := s.mgoConf.Load().(Config)
+				buyGridSize := 1 + conf.BuyGridSize
+				sellGridSize := 1 + conf.SellGridSize
+				clOrdId, _ := hex.DecodeString(strings.Trim(order.ClOrdId, s.instId))
+				index, _ := strconv.Atoi(string(clOrdId))
+				go s.InsertOrder(index, order)
+				pri, _ := strconv.ParseFloat(order.Px, 64)
+				s.shutdown(pri, conf)
+				if order.Side == "buy" {
+					log.Debug("买单成交")
+					pric := pri * sellGridSize
+					px, sz := s.getSz(pric, "sell", conf)
+					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
+					_, err := s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
+					if err != nil {
+						log.Error("买单成交，挂卖单失败", "error", err)
+						return err
+					}
+					log.Debug("买单成交，挂卖单成功")
 
-				pric = pri / math.Pow(buyGridSize, float64(s.gridNum))
-				px, sz = s.getSz(pric, "buy", conf)
-				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
-				_, err = s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
-				if err != nil {
-					log.Error("买单成交，挂买单失败", "error", err)
-					return err
+					pric = pri / math.Pow(buyGridSize, float64(s.gridNum))
+					px, sz = s.getSz(pric, "buy", conf)
+					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
+					_, err = s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
+					if err != nil {
+						log.Error("买单成交，挂买单失败", "error", err)
+						return err
+					}
+					log.Debug("买单成交，挂买单成功")
+					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum + 1)))
+					_, err = s.restClient.PostTradeCancelOrder(s.instId, "", strings.Split(s.instId, "-")[0]+clOrdId)
+					if err != nil {
+						log.Error("买单成交，撤销卖单失败", "error", err)
+						return err
+					}
+					log.Debug("买单成交，撤销卖单成功")
+				} else if order.Side == "sell" {
+					log.Debug("卖单成交")
+					pric := pri / buyGridSize
+					px, sz := s.getSz(pric, "buy", conf)
+					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
+					_, err := s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
+					if err != nil {
+						log.Error("卖单成交，挂买单失败", "error", err)
+						return err
+					}
+					log.Debug("卖单成交，挂买单成功")
+					pric = pri * math.Pow(sellGridSize, float64(s.gridNum))
+					px, sz = s.getSz(pric, "sell", conf)
+					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
+					_, err = s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
+					if err != nil {
+						log.Error("卖单成交，挂卖单失败", "error", err)
+						return err
+					}
+					log.Debug("卖单成交，挂卖单成功")
+					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum - 1)))
+					_, err = s.restClient.PostTradeCancelOrder(s.instId, "", strings.Split(s.instId, "-")[0]+clOrdId)
+					if err != nil {
+						log.Error("卖单成交，撤销买单失败", "error", err)
+						return err
+					}
+					log.Debug("卖单成交，撤销买单成功")
 				}
-				log.Debug("买单成交，挂买单成功")
-				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum + 1)))
-				_, err = s.restClient.PostTradeCancelOrder(s.instId, "", strings.Split(s.instId, "-")[0]+clOrdId)
-				if err != nil {
-					log.Error("买单成交，撤销卖单失败", "error", err)
-					return err
-				}
-				log.Debug("买单成交，撤销卖单成功")
-			} else if res.Data[0].Side == "sell" {
-				log.Debug("卖单成交")
-				pric := pri / buyGridSize
-				px, sz := s.getSz(pric, "buy", conf)
-				clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
-				_, err := s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
-				if err != nil {
-					log.Error("卖单成交，挂买单失败", "error", err)
-					return err
-				}
-				log.Debug("卖单成交，挂买单成功")
-				pric = pri * math.Pow(sellGridSize, float64(s.gridNum))
-				px, sz = s.getSz(pric, "sell", conf)
-				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
-				_, err = s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
-				if err != nil {
-					log.Error("卖单成交，挂卖单失败", "error", err)
-					return err
-				}
-				log.Debug("卖单成交，挂卖单成功")
-				clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum - 1)))
-				_, err = s.restClient.PostTradeCancelOrder(s.instId, "", strings.Split(s.instId, "-")[0]+clOrdId)
-				if err != nil {
-					log.Error("卖单成交，撤销买单失败", "error", err)
-					return err
-				}
-				log.Debug("卖单成交，撤销买单成功")
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -391,8 +431,6 @@ func (s *Server) CancelAllOrders() {
 
 func (s *Server) Stop() error {
 	s.CancelAllOrders()
-	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, okex.SPOT)
-	s.wsClient.Stop()
 
 	s.mgo.DisConnect()
 	s.status.Store(0)

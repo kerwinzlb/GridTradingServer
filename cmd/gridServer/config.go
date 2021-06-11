@@ -1,4 +1,4 @@
-package server
+package main
 
 type Config struct {
 	InstId       string  //产品ID
