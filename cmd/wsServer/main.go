@@ -28,7 +28,7 @@ var (
 	mFlags = []cli.Flag{
 		utils.ConfigDirFlag,
 		utils.VerbosityFlag,
-		utils.InstIdFlag,
+		utils.PortFlag,
 	}
 )
 
@@ -60,6 +60,7 @@ func wsServer(ctx *cli.Context) {
 	server.Start()
 
 	srvPort := ctx.GlobalInt(utils.PortFlag.Name)
+	log.Info("wsServer net.Listen", "srvPort", srvPort)
 	listen, err := net.Listen("tcp", ":"+strconv.Itoa(srvPort))
 	if err != nil {
 		log.Error("tcp port error", "port", srvPort)
