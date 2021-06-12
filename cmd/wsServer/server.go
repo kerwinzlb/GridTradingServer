@@ -11,6 +11,7 @@ import (
 var server *Server
 
 type Server struct {
+	conf        *okex.Config
 	wsClient    *okex.OKWSAgent
 	connectList atomic.Value
 	// ConnectList  map[string]pb.Ws_GetOrderInfoServer
@@ -18,7 +19,7 @@ type Server struct {
 
 func NewServer(conf *okex.Config) {
 	s := new(Server)
-	s.wsClient = okex.NewAgent(conf, s.Start)
+	s.conf = conf
 	server = s
 }
 
@@ -48,13 +49,14 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 }
 
 func (s *Server) Start() error {
+	s.wsClient = okex.NewAgent(s.conf, s.ReceivedOrdersDataCallback, s.Start)
 	s.wsClient.Start()
 	err := s.wsClient.Login()
 	if err != nil {
 		return err
 	}
 	log.Info("websocket Login success")
-	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, okex.SPOT, s.ReceivedOrdersDataCallback)
+	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, okex.SPOT)
 	if err != nil {
 		return err
 	}

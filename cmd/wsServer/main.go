@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"runtime/debug"
 	"sort"
 	"strconv"
 	"syscall"
@@ -47,12 +46,6 @@ func waitToExit() {
 }
 
 func wsServer(ctx *cli.Context) {
-	defer func() {
-		if err := recover(); err != nil {
-			log.Crit("wsServer", "server crash: ", err)
-			log.Crit("wsServer", "stack: ", string(debug.Stack()))
-		}
-	}()
 	go initLog(ctx)
 	go waitToExit()
 	configFilePath := ctx.GlobalString(utils.ConfigDirFlag.Name)
