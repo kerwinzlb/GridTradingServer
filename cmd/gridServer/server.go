@@ -85,7 +85,7 @@ func (s *Server) grpcConnect() error {
 	conn, err := grpc.Dial(s.conf.WsServerAddr+":"+strconv.Itoa(s.conf.WsServerPort), grpc.WithInsecure())
 	defer conn.Close()
 	if err != nil {
-		log.Error("grpcConnect", "grpc.Dial err", err)
+		log.Error("grpcConnect grpc.Dial", "err", err)
 		return err
 	}
 	c := pb.NewWsClient(conn)
@@ -95,7 +95,7 @@ func (s *Server) grpcConnect() error {
 
 	r, err := c.GetOrderInfo(context.Background(), req)
 	if err != nil {
-		log.Error("grpcConnect", "GetOrderInfo err", err)
+		log.Error("grpcConnect GetOrderInfo", "err", err)
 		return err
 	}
 	s.steam = r
@@ -174,7 +174,7 @@ func (s *Server) Monitor() {
 		case <-mticker.C:
 			conf, err := s.GetMgoConfig()
 			if err != nil {
-				log.Error("Monitor", "GetMgoConfig err", err)
+				log.Error("Monitor GetMgoConfig", "err", err)
 				continue
 			}
 			status := s.status.Load()
@@ -203,7 +203,7 @@ func (s *Server) Monitor() {
 func (s *Server) monitorOrder() {
 	trdp, err := s.GetTradeOrdersPending()
 	if err != nil {
-		log.Error("monitorOrder", "GetTradeOrdersPending err", err)
+		log.Error("monitorOrder GetTradeOrdersPending", "err", err)
 	}
 	if len(trdp.Data) != s.gridNum*2 {
 		s.CancelAllOrders()
@@ -220,10 +220,10 @@ func (s *Server) wsOrderRecv() {
 		}
 		r, err := s.steam.Recv()
 		if err != nil {
-			log.Error("wsOrderRecv", "s.steam.Recv err", err)
+			log.Error("wsOrderRecv s.steam.Recv", "err", err)
 			err = s.grpcConnect()
 			if err != nil {
-				log.Error("wsOrderRecv", "grpcConnect err", err)
+				log.Error("wsOrderRecv grpcConnect", "err", err)
 			}
 		}
 		go s.ReceivedOrdersDataCallback(r.Replybody)
@@ -246,7 +246,7 @@ func (s *Server) InsertTicker(ticket okex.Ticket) error {
 	ts, _ := strconv.ParseInt(ticket.Ts, 10, 64)
 	err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"instId": ticket.InstId, "last": last, "ts": ts})
 	if err != nil {
-		log.Error("InsertTicker", "error", err)
+		log.Error("InsertTicker InsertOne", "err", err)
 		return err
 	}
 	return nil
@@ -261,7 +261,7 @@ func (s *Server) InsertOrder(index int, order okex.DataOrder) error {
 	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
 	err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"index": index, "instId": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 	if err != nil {
-		log.Error("InsertOrder", "error", err)
+		log.Error("InsertOrder InsertOne", "err", err)
 		return err
 	}
 	return nil
@@ -272,7 +272,7 @@ func (s *Server) shutdown(pri float64, conf Config) {
 		s.Stop()
 		_, err := s.mgo.UpdateOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, bson.M{"status": 0})
 		if err != nil {
-			log.Error("shutdown", "UpdateOne err", err)
+			log.Error("shutdown UpdateOne", "err", err)
 		}
 	}
 }
@@ -281,7 +281,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 	res := new(okex.WSOrdersResponse)
 	err := okex.JsonBytes2Struct(rspMsg, res)
 	if err != nil {
-		log.Error("ReceivedOrdersDataCallback", "JsonBytes2Struct err", err)
+		log.Error("ReceivedOrdersDataCallback JsonBytes2Struct", "rspMsg", string(rspMsg), "err", err)
 		return err
 	}
 	for _, order := range res.Data {
@@ -419,12 +419,12 @@ func (s *Server) GetTradeOrdersPending() (*okex.PendingOrderResult, error) {
 func (s *Server) CancelAllOrders() {
 	trdp, err := s.GetTradeOrdersPending()
 	if err != nil {
-		log.Error("CancelAllOrders", "GetTradeOrdersPending err", err)
+		log.Error("CancelAllOrders GetTradeOrdersPending", "err", err)
 	}
 	for _, order := range trdp.Data {
 		_, err := s.restClient.PostTradeCancelOrder(s.instId, order.OrdId, "")
 		if err != nil {
-			log.Error("CancelAllOrders", "PostTradeCancelOrder err", err)
+			log.Error("CancelAllOrders PostTradeCancelOrder", "err", err)
 		}
 	}
 }

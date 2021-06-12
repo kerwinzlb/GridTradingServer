@@ -24,10 +24,13 @@ func NewServer(conf *okex.Config) {
 }
 
 func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
+	if string(rspMsg) == "pong" {
+		return nil
+	}
 	res := new(okex.WSOrdersResponse)
 	err := okex.JsonBytes2Struct(rspMsg, res)
 	if err != nil {
-		log.Error("ReceivedOrdersDataCallback", "JsonBytes2Struct err", err)
+		log.Error("ReceivedOrdersDataCallback JsonBytes2Struct", "rspMsg", string(rspMsg), "err", err)
 		return err
 	}
 
@@ -39,7 +42,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 			r.Replybody = rspMsg
 			err := stream.Send(r)
 			if err != nil {
-				log.Error("ReceivedOrdersDataCallback", "stream.Send err", err)
+				log.Error("ReceivedOrdersDataCallback stream.Send", "r.Replybody", string(r.Replybody), "err", err)
 				return err
 			}
 		}
