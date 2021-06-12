@@ -252,18 +252,20 @@ func (s *Server) InsertTicker(ticket okex.Ticket) error {
 	return nil
 }
 
-func (s *Server) InsertOrder(index int, order okex.DataOrder) error {
-	px, _ := strconv.ParseFloat(order.Px, 64)
-	sz, _ := strconv.ParseFloat(order.Sz, 64)
-	avgPx, _ := strconv.ParseFloat(order.AvgPx, 64)
-	fee, _ := strconv.ParseFloat(order.Fee, 64)
-	fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
-	cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
-	err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"index": index, "instId": order.InstId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
-	if err != nil {
-		log.Error("InsertOrder InsertOne", "err", err)
-		return err
+func (s *Server) InsertOrders(orders []okex.DataOrder) error {
+	for _, order := range orders {
+		px, _ := strconv.ParseFloat(order.Px, 64)
+		sz, _ := strconv.ParseFloat(order.Sz, 64)
+		avgPx, _ := strconv.ParseFloat(order.AvgPx, 64)
+		fee, _ := strconv.ParseFloat(order.Fee, 64)
+		fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
+		cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
+		err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"instId": order.InstId, "ordId": order.OrdId, "clOrdId": order.ClOrdId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
+		if err != nil {
+			log.Error("InsertOrders InsertOne", "err", err)
+		}
 	}
+	
 	return nil
 }
 
@@ -284,6 +286,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 		log.Error("ReceivedOrdersDataCallback JsonBytes2Struct", "rspMsg", string(rspMsg), "err", err)
 		return err
 	}
+	orders := make([]okex.DataOrder, 0)
 	for _, order := range res.Data {
 		if order.Code == "0" && order.InstType == okex.SPOT && order.OrdType == "post_only" {
 			if order.State == "filled" {
@@ -292,7 +295,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 				sellGridSize := 1 + conf.SellGridSize
 				clOrdId, _ := hex.DecodeString(strings.Trim(order.ClOrdId, s.instId))
 				index, _ := strconv.Atoi(string(clOrdId))
-				go s.InsertOrder(index, order)
+				orders = append(orders, order)
 				pri, _ := strconv.ParseFloat(order.Px, 64)
 				s.shutdown(pri, conf)
 				if order.Side == "buy" {
@@ -354,6 +357,8 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 			}
 		}
 	}
+
+	s.InsertOrders(orders)
 
 	return nil
 }
