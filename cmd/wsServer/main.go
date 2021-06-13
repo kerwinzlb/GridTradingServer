@@ -57,13 +57,18 @@ func wsServer(ctx *cli.Context) {
 	log.Info("GetConfiguration success")
 
 	NewServer(config)
-	server.Start()
+	err = server.Start()
+	if err != nil {
+		log.Error("wsServer server.Start()", "err", err)
+		return
+	}
 
 	srvPort := ctx.GlobalInt(utils.PortFlag.Name)
 	log.Info("wsServer net.Listen", "srvPort", srvPort)
 	listen, err := net.Listen("tcp", ":"+strconv.Itoa(srvPort))
 	if err != nil {
 		log.Error("tcp port error", "port", srvPort)
+		return
 	}
 
 	s := grpc.NewServer()
@@ -75,6 +80,7 @@ func wsServer(ctx *cli.Context) {
 	reflection.Register(s)
 	if err := s.Serve(listen); err != nil {
 		log.Error("ServiceStartFailed", "error", err)
+		return
 	}
 
 }

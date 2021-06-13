@@ -56,14 +56,20 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 
 func (s *Server) Start() error {
 	s.wsClient = okex.NewAgent(s.conf, s.ReceivedOrdersDataCallback, s.Start)
-	s.wsClient.Start()
-	err := s.wsClient.Login()
+	err := s.wsClient.Start()
 	if err != nil {
+		log.Error("Start s.wsClient.Start", "err", err)
+		return err
+	}
+	err = s.wsClient.Login()
+	if err != nil {
+		log.Error("Start s.wsClient.Login", "err", err)
 		return err
 	}
 	log.Info("websocket Login success")
 	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, okex.SPOT)
 	if err != nil {
+		log.Error("Start s.wsClient.Subscribe", "err", err)
 		return err
 	}
 	log.Info("websocket Subscribe success")
