@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"io"
 
 	"github.com/kerwinzlb/GridTradingServer/common"
 	"github.com/kerwinzlb/GridTradingServer/db"
@@ -37,7 +38,6 @@ type Server struct {
 	minSzN     int
 	gridNum    int
 	restClient *okex.Client
-	steam      pb.Ws_GetOrderInfoClient
 	mgo        *db.Mongo
 	status     atomic.Value
 	lock       *sync.RWMutex
@@ -74,32 +74,7 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 		return nil, err
 	}
 	s.mgoConf.Store(mgoConf)
-	err = s.grpcConnect()
-	if err != nil {
-		return nil, err
-	}
 	return s, nil
-}
-
-func (s *Server) grpcConnect() error {
-	conn, err := grpc.Dial(s.conf.WsServerAddr+":"+strconv.Itoa(s.conf.WsServerPort), grpc.WithInsecure())
-	defer conn.Close()
-	if err != nil {
-		log.Error("grpcConnect grpc.Dial", "err", err)
-		return err
-	}
-	c := pb.NewWsClient(conn)
-
-	req := new(pb.GetOrderRequest)
-	req.InstId = s.instId
-
-	r, err := c.GetOrderInfo(context.Background(), req)
-	if err != nil {
-		log.Error("grpcConnect GetOrderInfo", "err", err)
-		return err
-	}
-	s.steam = r
-	return nil
 }
 
 func (s *Server) getSz(pric float64, side string, conf Config) (string, string) {
@@ -163,7 +138,7 @@ func (s *Server) GetMgoConfig() (Config, error) {
 	return *conf, nil
 }
 
-func (s *Server) Monitor() {
+func (s *Server) MonitorLoop() {
 	mticker := time.NewTicker(15 * time.Second)
 	defer mticker.Stop()
 	rticker := time.NewTicker(30 * time.Second)
@@ -211,22 +186,47 @@ func (s *Server) monitorOrder() {
 	}
 }
 
-func (s *Server) wsOrderRecv() {
+func (s *Server) grpcConnect() (pb.Ws_GetOrderInfoClient, error) {
+	conn, err := grpc.Dial(s.conf.WsServerAddr+":"+strconv.Itoa(s.conf.WsServerPort), grpc.WithInsecure())
+	// defer conn.Close()
+	if err != nil {
+		log.Error("grpcConnect grpc.Dial", "err", err)
+		return nil, err
+	}
+	c := pb.NewWsClient(conn)
+
+	req := new(pb.GetOrderRequest)
+	req.InstId = s.instId
+
+	return c.GetOrderInfo(context.Background(), req)
+}
+
+func (s *Server) WsRecvLoop() {
+	stream, err := s.grpcConnect()
+	if err != nil {
+		log.Error("WsRecvLoop return grpcConnect", "err", err)
+		return
+	}
 	for {
 		select {
 		case <-s.stop:
+			log.Info("WsRecvLoop return")
 			return
 		default:
 		}
-		r, err := s.steam.Recv()
+		
+		r, err := stream.Recv()
 		if err != nil {
-			log.Error("wsOrderRecv s.steam.Recv", "err", err)
-			err = s.grpcConnect()
-			if err != nil {
-				log.Error("wsOrderRecv grpcConnect", "err", err)
+			if err != io.EOF {
+				log.Error("WsRecvLoop stream.Recv", "err", err)
+				stream, err = s.grpcConnect()
+				if err != nil {
+					log.Error("WsRecvLoop grpcConnect", "err", err)
+				}
 			}
+		} else {
+			go s.ReceivedOrdersDataCallback(r.Replybody)
 		}
-		go s.ReceivedOrdersDataCallback(r.Replybody)
 	}
 }
 
@@ -269,14 +269,16 @@ func (s *Server) InsertOrders(orders []okex.DataOrder) error {
 	return nil
 }
 
-func (s *Server) shutdown(pri float64, conf Config) {
+func (s *Server) shutdown(pri float64, conf Config) bool {
 	if pri <= conf.LowerLimit || pri >= conf.UpperLimit {
 		s.Stop()
 		_, err := s.mgo.UpdateOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, bson.M{"status": 0})
 		if err != nil {
 			log.Error("shutdown UpdateOne", "err", err)
 		}
+		return true
 	}
+	return false
 }
 
 func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
@@ -297,7 +299,9 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 				index, _ := strconv.Atoi(string(clOrdId))
 				orders = append(orders, order)
 				pri, _ := strconv.ParseFloat(order.Px, 64)
-				s.shutdown(pri, conf)
+				if s.shutdown(pri, conf) {
+					return nil
+				}
 				if order.Side == "buy" {
 					log.Debug("买单成交")
 					pric := pri * sellGridSize
@@ -436,13 +440,12 @@ func (s *Server) CancelAllOrders() {
 
 func (s *Server) Stop() error {
 	s.CancelAllOrders()
-
-	s.mgo.DisConnect()
 	s.status.Store(0)
 	return nil
 }
 
 func (s *Server) Exit() error {
+	s.mgo.DisConnect()
 	s.Stop()
 	close(s.stop)
 	return nil

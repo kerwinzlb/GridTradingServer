@@ -10,16 +10,19 @@ import (
 
 var server *Server
 
+type chanMap map[string]chan []byte
+
 type Server struct {
-	conf        *okex.Config
-	wsClient    *okex.OKWSAgent
-	connectList atomic.Value
-	// ConnectList  map[string]pb.Ws_GetOrderInfoServer
+	conf         *okex.Config
+	wsClient     *okex.OKWSAgent
+	orderChanMap atomic.Value
+	stop         chan struct{} // Channel to wait for termination notifications
 }
 
 func NewServer(conf *okex.Config) {
 	s := new(Server)
 	s.conf = conf
+	s.stop = make(chan struct{})
 	server = s
 }
 
@@ -34,20 +37,20 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 		return err
 	}
 
-	list := s.connectList.Load()
-	if list != nil {
-		stream := list.(map[string]pb.Ws_GetOrderInfoServer)[res.Arg.InstId]
-		if stream != nil {
-			r := new(pb.GetOrderResponse)
-			r.Replybody = rspMsg
-			err := stream.Send(r)
-			if err != nil {
-				log.Error("ReceivedOrdersDataCallback stream.Send", "r.Replybody", string(r.Replybody), "err", err)
-				return err
-			}
+	
+	orderChanMap := s.orderChanMap.Load()
+	if orderChanMap != nil {
+		instid := ""
+		if len(res.Data) != 0 {
+			instid = res.Data[0].InstId
+		} else {
+			return nil
+		}
+		orderChan := orderChanMap.(chanMap)[instid]
+		if orderChan != nil {
+			orderChan <- rspMsg
 		}
 	}
-
 	return nil
 }
 
@@ -70,19 +73,37 @@ func (s *Server) Start() error {
 func (s *Server) Stop() error {
 	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, okex.SPOT)
 	s.wsClient.Stop()
+	close(s.stop)
 	return nil
 }
 
 func (s *Server) GetOrderInfo(req *pb.GetOrderRequest, srv pb.Ws_GetOrderInfoServer) error {
-	connectList := s.connectList.Load()
-	if connectList != nil {
-		list := connectList.(map[string]pb.Ws_GetOrderInfoServer)
-		list[req.InstId] = srv
-		s.connectList.Store(list)
+	orderChan := make(chan []byte, 10)
+	orderChanMap := s.orderChanMap.Load()
+	if orderChanMap != nil {
+		oChanMap := orderChanMap.(chanMap)
+		oChanMap[req.InstId] = orderChan
+		s.orderChanMap.Store(oChanMap)
 	} else {
-		list := make(map[string]pb.Ws_GetOrderInfoServer)
-		list[req.InstId] = srv
-		s.connectList.Store(list)
+		oChanMap := make(chanMap)
+		oChanMap[req.InstId] = orderChan
+		s.orderChanMap.Store(oChanMap)
+	}
+
+	for {
+		select {
+		case msg := <- orderChan:
+			r := new(pb.GetOrderResponse)
+			r.Replybody = msg
+			err := srv.Send(r)
+			if err != nil {
+				log.Error("GetOrderInfo stream.Send", "err", err)
+				return err
+			}
+		case <- s.stop:
+			break
+		}
+		
 	}
 	return nil
 }
