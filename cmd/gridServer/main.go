@@ -67,7 +67,7 @@ func gridServer(ctx *cli.Context) {
 	go waitToExit(gridServer)
 	go gridServer.MonitorLoop()
 	go gridServer.WsRecvLoop()
-	time.Sleep(time.Second)
+	time.Sleep(5*time.Second)
 	err = gridServer.Start()
 	if err != nil {
 		log.Errorf("Start error:%v\n", err)

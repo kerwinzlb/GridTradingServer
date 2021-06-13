@@ -155,7 +155,10 @@ func (s *Server) MonitorLoop() {
 			status := s.status.Load()
 			if status == 0 {
 				if conf.Status == 1 {
-					s.Start()
+					err := s.Start()
+					if err != nil {
+						log.Error("MonitorLoop s.Start", "err", err)
+					}
 				}
 			} else if status == 1 {
 				if conf.Status == 0 {
@@ -183,6 +186,7 @@ func (s *Server) monitorOrder() {
 	if len(trdp.Data) != s.gridNum*2 {
 		s.CancelAllOrders()
 		s.initPostOrder()
+		log.Error("monitorOrder triggered successfully!")
 	}
 }
 
@@ -300,6 +304,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 				orders = append(orders, order)
 				pri, _ := strconv.ParseFloat(order.Px, 64)
 				if s.shutdown(pri, conf) {
+					log.Error("shutdown triggered successfully!")
 					return nil
 				}
 				if order.Side == "buy" {
