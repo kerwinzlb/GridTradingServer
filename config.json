@@ -1,7 +1,8 @@
 {
 	"Endpoint": "https://www.okex.com/",
 	"WSEndpoint":"wss://ws.okex.com:8443/ws/v5/private",
-	"MgoEndpoint":"mongodb://localhost:27017",
+	"DbType":0,
+	"DbEndpoint":"mongodb://localhost:27017",
 	"WsServerAddr":"127.0.0.1",
 	"WsServerPort":8686,
 	"ApiKey":"",

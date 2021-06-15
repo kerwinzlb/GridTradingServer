@@ -2,84 +2,84 @@ package db
 
 import (
 	"context"
-	"time"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type Mongo struct {
-	mgoEndpoint string
-	mgoClient   *mongo.Client
-	mgoCancel   context.CancelFunc
-	ctx         context.Context
+	endpoint string
+	client   *mongo.Client
 }
 
-func NewMgo(mgoEndpoint string) *Mongo {
+func NewMgo(endpoint string) *Mongo {
 	return &Mongo{
-		mgoEndpoint: mgoEndpoint,
+		endpoint: endpoint,
 	}
 }
 
 func (m *Mongo) Connect() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(m.mgoEndpoint))
+	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(m.endpoint))
 	if err != nil {
 		return err
 	}
-	m.mgoClient = client
-	m.mgoCancel = cancel
-	m.ctx = ctx
+	err = client.Ping(context.TODO(), nil)
+	if err != nil {
+		return err
+	}
+	m.client = client
 	return nil
 }
 
 func (m *Mongo) DisConnect() error {
-	m.mgoClient.Disconnect(m.ctx)
-	m.mgoCancel()
+	m.client.Disconnect(context.TODO())
 	return nil
 }
 
 func (m *Mongo) InsertOne(mgoDBName, mgoCollectionName string, document interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	collection := m.mgoClient.Database(mgoDBName).Collection(mgoCollectionName)
-	_, err := collection.InsertOne(ctx, document)
+	err := m.client.Ping(context.TODO(), nil)
 	if err != nil {
-		m.Connect()
-		_, err = collection.InsertOne(ctx, document)
+		err = m.Connect()
 		if err != nil {
 			return err
 		}
+	}
+	collection := m.client.Database(mgoDBName).Collection(mgoCollectionName)
+	_, err = collection.InsertOne(context.TODO(), document)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 func (m *Mongo) FindOne(mgoDBName, mgoCollectionName string, filter, result interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	collection := m.mgoClient.Database(mgoDBName).Collection(mgoCollectionName)
-	err := collection.FindOne(ctx, filter).Decode(result)
+	err := m.client.Ping(context.TODO(), nil)
 	if err != nil {
-		m.Connect()
-		err = collection.FindOne(ctx, filter).Decode(result)
+		err = m.Connect()
 		if err != nil {
 			return err
 		}
+	}
+	collection := m.client.Database(mgoDBName).Collection(mgoCollectionName)
+	err = collection.FindOne(context.TODO(), filter).Decode(result)
+	if err != nil {
+		return err
 	}
 	return nil
 }
 
 func (m *Mongo) UpdateOne(mgoDBName, mgoCollectionName string, filter, update interface{}) (*mongo.UpdateResult, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	collection := m.mgoClient.Database(mgoDBName).Collection(mgoCollectionName)
-	res, err := collection.UpdateOne(ctx, filter, update)
+	err := m.client.Ping(context.TODO(), nil)
 	if err != nil {
-		m.Connect()
-		res, err = collection.UpdateOne(ctx, filter, update)
+		err = m.Connect()
 		if err != nil {
 			return nil, err
 		}
+	}
+	collection := m.client.Database(mgoDBName).Collection(mgoCollectionName)
+	res, err := collection.UpdateOne(context.TODO(), filter, update)
+	if err != nil {
+		return nil, err
 	}
 	return res, nil
 }

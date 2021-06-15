@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"io"
 	"math"
 	"os"
 	"reflect"
@@ -11,14 +12,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"io"
 
 	"github.com/kerwinzlb/GridTradingServer/common"
 	"github.com/kerwinzlb/GridTradingServer/db"
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
 	pb "github.com/kerwinzlb/GridTradingServer/proto"
-	"go.mongodb.org/mongo-driver/bson"
 	"google.golang.org/grpc"
 )
 
@@ -31,7 +30,7 @@ const (
 
 type Server struct {
 	conf       *okex.Config
-	mgoConf    atomic.Value
+	dbConf     atomic.Value
 	instId     string
 	tickSzN    int
 	lotSzN     int
@@ -39,24 +38,25 @@ type Server struct {
 	gridNum    int
 	restClient *okex.Client
 	mgo        *db.Mongo
-	status     atomic.Value
+	msql       *db.Mysql
+	status     uint64
 	lock       *sync.RWMutex
 
-	stop chan struct{} // Channel to wait for termination notifications
+	sideChan chan string
+	stop     chan struct{} // Channel to wait for termination notifications
 }
 
 func New(instId string, conf *okex.Config) (*Server, error) {
-	confCopy := *conf
 	s := &Server{
-		conf:       &confCopy,
+		conf:       conf,
 		instId:     instId,
 		restClient: okex.NewClient(*conf),
-		mgo:        db.NewMgo(conf.MgoEndpoint),
 		lock:       new(sync.RWMutex),
+		sideChan:   make(chan string, 100),
 		stop:       make(chan struct{}),
 	}
 
-	s.status.Store(0)
+	atomic.StoreUint64(&s.status, 0)
 	pubRes, err := s.restClient.GetPublicInstruments(okex.SPOT, "", s.instId)
 	if err != nil {
 		return nil, err
@@ -65,31 +65,32 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 	s.lotSzN = common.FloatRoundLen(pubRes.Data[0].LotSz)
 	s.minSzN = common.FloatRoundLen(pubRes.Data[0].MinSz)
 
-	err = s.mgo.Connect()
+	err = s.dbConnect()
 	if err != nil {
 		return nil, err
 	}
-	mgoConf, err := s.GetMgoConfig()
+
+	dbConf, err := s.GetDbConfig()
 	if err != nil {
 		return nil, err
 	}
-	s.mgoConf.Store(mgoConf)
+	s.dbConf.Store(dbConf)
 	return s, nil
 }
 
-func (s *Server) getSz(pric float64, side string, conf Config) (string, string) {
+func (s *Server) getSz(pric float64, side string, dbConf DbConfig) (string, string) {
 	sz := ""
-	if conf.Mode == 0 {
+	if dbConf.Mode == 0 {
 		if side == "buy" {
-			sz = strconv.FormatFloat(conf.BuyNum, 'f', s.lotSzN, 64)
+			sz = strconv.FormatFloat(dbConf.BuyNum, 'f', s.lotSzN, 64)
 		} else if side == "sell" {
-			sz = strconv.FormatFloat(conf.SellNum, 'f', s.lotSzN, 64)
+			sz = strconv.FormatFloat(dbConf.SellNum, 'f', s.lotSzN, 64)
 		}
-	} else if conf.Mode == 1 {
+	} else if dbConf.Mode == 1 {
 		if side == "buy" {
-			sz = strconv.FormatFloat(conf.BuyAmt/(pric), 'f', s.lotSzN, 64)
+			sz = strconv.FormatFloat(dbConf.BuyAmt/(pric), 'f', s.lotSzN, 64)
 		} else if side == "sell" {
-			sz = strconv.FormatFloat(conf.SellAmt/(pric), 'f', s.lotSzN, 64)
+			sz = strconv.FormatFloat(dbConf.SellAmt/(pric), 'f', s.lotSzN, 64)
 		}
 	}
 	px := strconv.FormatFloat(pric, 'f', s.tickSzN, 64)
@@ -101,15 +102,13 @@ func (s *Server) initPostOrder() error {
 	if err != nil {
 		return err
 	}
-	// pric, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
-	// s.sz = strconv.FormatFloat(s.conf.Amount/pric, 'f', s.lotSzN, 64)
 	s.InsertTicker(ticRes.Data[0])
 	last, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
 	index := 0
-	conf := s.mgoConf.Load().(Config)
+	dbConf := s.dbConf.Load().(DbConfig)
 	for i := s.gridNum; i > 0; i-- {
-		pric := last / math.Pow((1+conf.BuyGridSize), float64(i))
-		px, sz := s.getSz(pric, "buy", conf)
+		pric := last / math.Pow((1+dbConf.BuyGridSize), float64(i))
+		px, sz := s.getSz(pric, "buy", dbConf)
 		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - i)))
 
 		_, err := s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
@@ -117,8 +116,8 @@ func (s *Server) initPostOrder() error {
 			return err
 		}
 
-		pric = last * math.Pow((1+conf.SellGridSize), float64(i))
-		px, sz = s.getSz(pric, "sell", conf)
+		pric = last * math.Pow((1+dbConf.SellGridSize), float64(i))
+		px, sz = s.getSz(pric, "sell", dbConf)
 		px = strconv.FormatFloat(pric, 'f', s.tickSzN, 64)
 		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + i)))
 		_, err = s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
@@ -129,49 +128,70 @@ func (s *Server) initPostOrder() error {
 	return nil
 }
 
-func (s *Server) GetMgoConfig() (Config, error) {
-	conf := new(Config)
-	err := s.mgo.FindOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, conf)
-	if err != nil {
-		return Config{}, err
-	}
-	return *conf, nil
-}
-
 func (s *Server) MonitorLoop() {
-	mticker := time.NewTicker(15 * time.Second)
-	defer mticker.Stop()
-	rticker := time.NewTicker(30 * time.Second)
-	defer rticker.Stop()
+	sec := time.Duration(300)
+	getDbConfTic := time.NewTicker(15 * time.Second)
+	moniOrdNumTic := time.NewTicker(30 * time.Second)
+	secTic := time.NewTicker(sec * time.Second)
+	defer getDbConfTic.Stop()
+	defer moniOrdNumTic.Stop()
+	defer secTic.Stop()
+
+	buyNum := 0
+	sellNum := 0
 
 	for {
 		select {
-		case <-mticker.C:
-			conf, err := s.GetMgoConfig()
+		case <-getDbConfTic.C:
+			dbConf, err := s.GetDbConfig()
 			if err != nil {
-				log.Error("Monitor GetMgoConfig", "err", err)
+				log.Error("Monitor GetDbConfig", "err", err)
 				continue
 			}
-			status := s.status.Load()
+			status := atomic.LoadUint64(&s.status)
 			if status == 0 {
-				if conf.Status == 1 {
+				if dbConf.Status == 1 {
 					err := s.Start()
 					if err != nil {
 						log.Error("MonitorLoop s.Start", "err", err)
 					}
+					buyNum = 0
+					sellNum = 0
+					secTic = time.NewTicker(sec * time.Second)
 				}
 			} else if status == 1 {
-				if conf.Status == 0 {
+				if dbConf.Status == 0 {
 					s.Stop()
-				} else if conf.Status == 1 {
-					mgoConf := s.mgoConf.Load().(Config)
-					if !reflect.DeepEqual(mgoConf, conf) {
-						s.mgoConf.Store(conf)
+					secTic.Stop()
+					buyNum = 0
+					sellNum = 0
+				} else if dbConf.Status == 1 {
+					dbConf := s.dbConf.Load().(DbConfig)
+					if !reflect.DeepEqual(dbConf, dbConf) {
+						sec = time.Duration(dbConf.Sec)
+						s.dbConf.Store(dbConf)
 					}
 				}
 			}
-		case <-rticker.C:
+		case <-moniOrdNumTic.C:
 			s.monitorOrder()
+		case <-secTic.C:
+			buyNum = 0
+			sellNum = 0
+		case side := <-s.sideChan:
+			if side == "buy" {
+				buyNum++
+			} else if side == "sell" {
+				sellNum++
+			}
+			diffNum := buyNum - sellNum
+			if diffNum == -10 || diffNum == 10 {
+				buyNum = 0
+				sellNum = 0
+				s.shutdown()
+				secTic.Stop()
+				secTic = time.NewTicker(sec * time.Second)
+			}
 		case <-s.stop:
 			return
 		}
@@ -218,7 +238,7 @@ func (s *Server) WsRecvLoop() {
 			return
 		default:
 		}
-		
+
 		r, err := stream.Recv()
 		if err != nil {
 			if err != io.EOF {
@@ -235,54 +255,22 @@ func (s *Server) WsRecvLoop() {
 }
 
 func (s *Server) Start() error {
-	conf := s.mgoConf.Load().(Config)
-	s.gridNum = conf.GridNum
+	dbConf := s.dbConf.Load().(DbConfig)
+	s.gridNum = dbConf.GridNum
 	err := s.initPostOrder()
 	if err != nil {
 		return err
 	}
-	s.status.Store(1)
+	atomic.StoreUint64(&s.status, 1)
 	return nil
 }
 
-func (s *Server) InsertTicker(ticket okex.Ticket) error {
-	last, _ := strconv.ParseFloat(ticket.Last, 64)
-	ts, _ := strconv.ParseInt(ticket.Ts, 10, 64)
-	err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_TICKET_NAME, bson.M{"instId": ticket.InstId, "last": last, "ts": ts})
+func (s *Server) shutdown() {
+	s.Stop()
+	err := s.UpdateDbStatus()
 	if err != nil {
-		log.Error("InsertTicker InsertOne", "err", err)
-		return err
+		log.Error("shutdown UpdateOne", "err", err)
 	}
-	return nil
-}
-
-func (s *Server) InsertOrders(orders []okex.DataOrder) error {
-	for _, order := range orders {
-		px, _ := strconv.ParseFloat(order.Px, 64)
-		sz, _ := strconv.ParseFloat(order.Sz, 64)
-		avgPx, _ := strconv.ParseFloat(order.AvgPx, 64)
-		fee, _ := strconv.ParseFloat(order.Fee, 64)
-		fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
-		cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
-		err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"instId": order.InstId, "ordId": order.OrdId, "clOrdId": order.ClOrdId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
-		if err != nil {
-			log.Error("InsertOrders InsertOne", "err", err)
-		}
-	}
-	
-	return nil
-}
-
-func (s *Server) shutdown(pri float64, conf Config) bool {
-	if pri <= conf.LowerLimit || pri >= conf.UpperLimit {
-		s.Stop()
-		_, err := s.mgo.UpdateOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, bson.M{"status": 0})
-		if err != nil {
-			log.Error("shutdown UpdateOne", "err", err)
-		}
-		return true
-	}
-	return false
 }
 
 func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
@@ -296,21 +284,18 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 	for _, order := range res.Data {
 		if order.Code == "0" && order.InstType == okex.SPOT && order.OrdType == "post_only" {
 			if order.State == "filled" {
-				conf := s.mgoConf.Load().(Config)
-				buyGridSize := 1 + conf.BuyGridSize
-				sellGridSize := 1 + conf.SellGridSize
+				dbConf := s.dbConf.Load().(DbConfig)
+				buyGridSize := 1 + dbConf.BuyGridSize
+				sellGridSize := 1 + dbConf.SellGridSize
 				clOrdId, _ := hex.DecodeString(strings.Trim(order.ClOrdId, s.instId))
 				index, _ := strconv.Atoi(string(clOrdId))
 				orders = append(orders, order)
 				pri, _ := strconv.ParseFloat(order.Px, 64)
-				if s.shutdown(pri, conf) {
-					log.Error("shutdown triggered successfully!")
-					return nil
-				}
+				s.sideChan <- order.Side
 				if order.Side == "buy" {
 					log.Debug("买单成交")
 					pric := pri * sellGridSize
-					px, sz := s.getSz(pric, "sell", conf)
+					px, sz := s.getSz(pric, "sell", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
 					_, err := s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
 					if err != nil {
@@ -320,7 +305,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 					log.Debug("买单成交，挂卖单成功")
 
 					pric = pri / math.Pow(buyGridSize, float64(s.gridNum))
-					px, sz = s.getSz(pric, "buy", conf)
+					px, sz = s.getSz(pric, "buy", dbConf)
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
 					_, err = s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
 					if err != nil {
@@ -338,7 +323,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 				} else if order.Side == "sell" {
 					log.Debug("卖单成交")
 					pric := pri / buyGridSize
-					px, sz := s.getSz(pric, "buy", conf)
+					px, sz := s.getSz(pric, "buy", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
 					_, err := s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
 					if err != nil {
@@ -347,7 +332,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 					}
 					log.Debug("卖单成交，挂买单成功")
 					pric = pri * math.Pow(sellGridSize, float64(s.gridNum))
-					px, sz = s.getSz(pric, "sell", conf)
+					px, sz = s.getSz(pric, "sell", dbConf)
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
 					_, err = s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
 					if err != nil {
@@ -445,7 +430,7 @@ func (s *Server) CancelAllOrders() {
 
 func (s *Server) Stop() error {
 	s.CancelAllOrders()
-	s.status.Store(0)
+	atomic.StoreUint64(&s.status, 0)
 	return nil
 }
 

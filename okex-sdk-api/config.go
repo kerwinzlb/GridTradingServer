@@ -23,8 +23,12 @@ type Config struct {
 	// Rest websocket api endpoint url. eg: ws://192.168.80.113:10442/
 	WSEndpoint string
 
-	//mongo api endpoint url
-	MgoEndpoint string
+	// db type: 0-mongodb;1-mysql
+	DbType int
+
+	// mongo api endpoint url mongodb://user:pwd@localhost:27017
+	// Mysql api endpoint url user:pwd@tcp(127.0.0.1:3306)/grid
+	DbEndpoint string
 
 	WsServerAddr string //websocket server地址
 	WsServerPort int    //websocket server端口
