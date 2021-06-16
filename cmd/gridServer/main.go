@@ -65,15 +65,15 @@ func gridServer(ctx *cli.Context) {
 	}
 	log.Info("New success")
 	go waitToExit(gridServer)
-	go gridServer.MonitorLoop()
 	go gridServer.WsRecvLoop()
-	time.Sleep(5*time.Second)
+	time.Sleep(5 * time.Second)
 	err = gridServer.Start()
 	if err != nil {
 		log.Errorf("Start error:%v\n", err)
 		return
 	}
 	log.Info("Start success")
+	go gridServer.MonitorLoop()
 	gridServer.Wait()
 }
 

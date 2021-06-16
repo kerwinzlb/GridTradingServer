@@ -25,7 +25,7 @@ const (
 	MGO_DB_NAME                = "grid"
 	MGO_COLLECTION_CONFIG_NAME = "config"
 	MGO_COLLECTION_TICKET_NAME = "ticket"
-	MGO_COLLECTION_ORDER_NAME  = "order"
+	MGO_COLLECTION_ORDER_NAME  = "orders"
 )
 
 type Server struct {
@@ -38,7 +38,7 @@ type Server struct {
 	gridNum    int
 	restClient *okex.Client
 	mgo        *db.Mongo
-	msql       *db.Mysql
+	mysql      *db.Mysql
 	status     uint64
 	lock       *sync.RWMutex
 
@@ -129,7 +129,7 @@ func (s *Server) initPostOrder() error {
 }
 
 func (s *Server) MonitorLoop() {
-	sec := time.Duration(300)
+	sec := time.Duration(s.dbConf.Load().(DbConfig).Sec)
 	getDbConfTic := time.NewTicker(15 * time.Second)
 	moniOrdNumTic := time.NewTicker(30 * time.Second)
 	secTic := time.NewTicker(sec * time.Second)
@@ -166,8 +166,8 @@ func (s *Server) MonitorLoop() {
 					buyNum = 0
 					sellNum = 0
 				} else if dbConf.Status == 1 {
-					dbConf := s.dbConf.Load().(DbConfig)
-					if !reflect.DeepEqual(dbConf, dbConf) {
+					oldDbConf := s.dbConf.Load().(DbConfig)
+					if !reflect.DeepEqual(oldDbConf, dbConf) {
 						sec = time.Duration(dbConf.Sec)
 						s.dbConf.Store(dbConf)
 					}
@@ -282,7 +282,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 	}
 	orders := make([]okex.DataOrder, 0)
 	for _, order := range res.Data {
-		if order.Code == "0" && order.InstType == okex.SPOT && order.OrdType == "post_only" {
+		if order.InstType == okex.SPOT && order.OrdType == "post_only" {
 			if order.State == "filled" {
 				dbConf := s.dbConf.Load().(DbConfig)
 				buyGridSize := 1 + dbConf.BuyGridSize
@@ -293,7 +293,6 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 				pri, _ := strconv.ParseFloat(order.Px, 64)
 				s.sideChan <- order.Side
 				if order.Side == "buy" {
-					log.Debug("买单成交")
 					pric := pri * sellGridSize
 					px, sz := s.getSz(pric, "sell", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
@@ -302,7 +301,6 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 						log.Error("买单成交，挂卖单失败", "error", err)
 						return err
 					}
-					log.Debug("买单成交，挂卖单成功")
 
 					pric = pri / math.Pow(buyGridSize, float64(s.gridNum))
 					px, sz = s.getSz(pric, "buy", dbConf)
@@ -312,16 +310,13 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 						log.Error("买单成交，挂买单失败", "error", err)
 						return err
 					}
-					log.Debug("买单成交，挂买单成功")
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum + 1)))
 					_, err = s.restClient.PostTradeCancelOrder(s.instId, "", strings.Split(s.instId, "-")[0]+clOrdId)
 					if err != nil {
 						log.Error("买单成交，撤销卖单失败", "error", err)
 						return err
 					}
-					log.Debug("买单成交，撤销卖单成功")
 				} else if order.Side == "sell" {
-					log.Debug("卖单成交")
 					pric := pri / buyGridSize
 					px, sz := s.getSz(pric, "buy", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
@@ -330,7 +325,6 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 						log.Error("卖单成交，挂买单失败", "error", err)
 						return err
 					}
-					log.Debug("卖单成交，挂买单成功")
 					pric = pri * math.Pow(sellGridSize, float64(s.gridNum))
 					px, sz = s.getSz(pric, "sell", dbConf)
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
@@ -339,14 +333,12 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 						log.Error("卖单成交，挂卖单失败", "error", err)
 						return err
 					}
-					log.Debug("卖单成交，挂卖单成功")
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum - 1)))
 					_, err = s.restClient.PostTradeCancelOrder(s.instId, "", strings.Split(s.instId, "-")[0]+clOrdId)
 					if err != nil {
 						log.Error("卖单成交，撤销买单失败", "error", err)
 						return err
 					}
-					log.Debug("卖单成交，撤销买单成功")
 				}
 			}
 		}

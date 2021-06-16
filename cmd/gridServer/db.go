@@ -23,8 +23,8 @@ func (s *Server) dbConnect() error {
 		s.mgo = db.NewMgo(s.conf.DbEndpoint)
 		return s.mgo.Connect()
 	} else if s.conf.DbType == mysql {
-		s.msql = db.NewMysql(s.conf.DbEndpoint)
-		return s.msql.Connect()
+		s.mysql = db.NewMysql(s.conf.DbEndpoint)
+		return s.mysql.Connect()
 	} else {
 		return ErrDbType
 	}
@@ -36,21 +36,8 @@ func (s *Server) GetDbConfig() (DbConfig, error) {
 		err := s.mgo.FindOne(MGO_DB_NAME, MGO_COLLECTION_CONFIG_NAME, bson.M{"instId": s.instId}, &dbConf)
 		return dbConf, err
 	} else if s.conf.DbType == mysql {
-		res := make([]interface{}, 0)
-		res = append(res, &dbConf.InstId)
-		res = append(res, &dbConf.BuyAmt)
-		res = append(res, &dbConf.SellAmt)
-		res = append(res, &dbConf.BuyNum)
-		res = append(res, &dbConf.SellNum)
-		res = append(res, &dbConf.BuyGridSize)
-		res = append(res, &dbConf.SellGridSize)
-		res = append(res, &dbConf.GridNum)
-		res = append(res, &dbConf.Mode)
-		res = append(res, &dbConf.Sec)
-		res = append(res, &dbConf.MaxDiffNum)
-		res = append(res, &dbConf.Status)
-		cmdSql := "select * from " + MGO_COLLECTION_CONFIG_NAME + " where instId = " + s.instId
-		err := s.msql.QueryRow(cmdSql, res)
+		cmdSql := fmt.Sprintf("select * from "+MGO_COLLECTION_CONFIG_NAME+" where instId = '%s'", s.instId)
+		err := s.mysql.QueryRow(cmdSql, &dbConf.InstId, &dbConf.BuyAmt, &dbConf.SellAmt, &dbConf.BuyNum, &dbConf.SellNum, &dbConf.BuyGridSize, &dbConf.SellGridSize, &dbConf.GridNum, &dbConf.Mode, &dbConf.Sec, &dbConf.MaxDiffNum, &dbConf.Status)
 		return dbConf, err
 	} else {
 		return DbConfig{}, ErrDbType
@@ -68,9 +55,9 @@ func (s *Server) InsertTicker(ticket okex.Ticket) error {
 		return err
 	} else if s.conf.DbType == mysql {
 		cmdSql := fmt.Sprintf("INSERT INTO "+MGO_COLLECTION_TICKET_NAME+" (instId, last, ts) VALUES ('%s', '%f', '%d')", ticket.InstId, last, ts)
-		_, err := s.msql.Execute(cmdSql)
+		_, err := s.mysql.Execute(cmdSql)
 		if err != nil {
-			log.Error("InsertTicker msql.Execute", "cmdSql", cmdSql, "err", err)
+			log.Error("InsertTicker mysql.Execute", "cmdSql", cmdSql, "err", err)
 		}
 		return err
 	} else {
@@ -93,9 +80,9 @@ func (s *Server) InsertOrders(orders []okex.DataOrder) {
 			}
 		} else if s.conf.DbType == mysql {
 			cmdSql := fmt.Sprintf("INSERT INTO "+MGO_COLLECTION_ORDER_NAME+" (instId, ordId, clOrdId, side, px, sz, avgPx, fee, fillTime, cTime) VALUES ('%s', '%s', '%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')", order.InstId, order.OrdId, order.ClOrdId, order.Side, px, sz, avgPx, fee, fillTime, cTime)
-			_, err := s.msql.Execute(cmdSql)
+			_, err := s.mysql.Execute(cmdSql)
 			if err != nil {
-				log.Error("InsertOrders msql.Execute", "cmdSql", cmdSql, "err", err)
+				log.Error("InsertOrders mysql.Execute", "cmdSql", cmdSql, "err", err)
 			}
 		} else {
 			log.Error("InsertOrders", "err", ErrDbType)
@@ -114,9 +101,9 @@ func (s *Server) UpdateDbStatus() error {
 	} else if s.conf.DbType == mysql {
 		// update userinfo set username = 'anson' where uid = 1
 		cmdSql := fmt.Sprintf("update "+MGO_COLLECTION_CONFIG_NAME+" set status = '0' where instId = '%s'", s.instId)
-		_, err := s.msql.Execute(cmdSql)
+		_, err := s.mysql.Execute(cmdSql)
 		if err != nil {
-			log.Error("UpdateDbStatus msql.Execute", "cmdSql", cmdSql, "err", err)
+			log.Error("UpdateDbStatus mysql.Execute", "cmdSql", cmdSql, "err", err)
 		}
 		return err
 	} else {

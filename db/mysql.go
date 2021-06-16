@@ -59,7 +59,7 @@ func (m *Mysql) Execute(cmd string) (sql.Result, error) {
 	return stmt.Exec()
 }
 
-func (m *Mysql) QueryRow(cmd string, res []interface{}) error {
+func (m *Mysql) QueryRow(cmd string, dest ...interface{}) error {
 	err := m.db.Ping()
 	if err != nil {
 		err = m.Connect()
@@ -67,5 +67,5 @@ func (m *Mysql) QueryRow(cmd string, res []interface{}) error {
 			return err
 		}
 	}
-	return m.db.QueryRow(cmd, nil).Scan(res)
+	return m.db.QueryRow(cmd).Scan(dest...)
 }
