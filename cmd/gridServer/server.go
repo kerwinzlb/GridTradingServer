@@ -106,8 +106,9 @@ func (s *Server) initPostOrder() error {
 	last, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
 	index := 0
 	dbConf := s.dbConf.Load().(DbConfig)
+	gridSize := 1 + dbConf.GridSize
 	for i := s.gridNum; i > 0; i-- {
-		pric := last / math.Pow((1+dbConf.BuyGridSize), float64(i))
+		pric := last / math.Pow((gridSize), float64(i))
 		px, sz := s.getSz(pric, "buy", dbConf)
 		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - i)))
 
@@ -116,7 +117,7 @@ func (s *Server) initPostOrder() error {
 			return err
 		}
 
-		pric = last * math.Pow((1+dbConf.SellGridSize), float64(i))
+		pric = last * math.Pow((gridSize), float64(i))
 		px, sz = s.getSz(pric, "sell", dbConf)
 		px = strconv.FormatFloat(pric, 'f', s.tickSzN, 64)
 		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + i)))
@@ -285,15 +286,14 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 		if order.InstType == okex.SPOT && order.OrdType == "post_only" {
 			if order.State == "filled" {
 				dbConf := s.dbConf.Load().(DbConfig)
-				buyGridSize := 1 + dbConf.BuyGridSize
-				sellGridSize := 1 + dbConf.SellGridSize
+				gridSize := 1 + dbConf.GridSize
 				clOrdId, _ := hex.DecodeString(strings.Trim(order.ClOrdId, s.instId))
 				index, _ := strconv.Atoi(string(clOrdId))
 				orders = append(orders, order)
 				pri, _ := strconv.ParseFloat(order.Px, 64)
 				s.sideChan <- order.Side
 				if order.Side == "buy" {
-					pric := pri * sellGridSize
+					pric := pri * gridSize
 					px, sz := s.getSz(pric, "sell", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
 					_, err := s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
@@ -302,7 +302,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 						return err
 					}
 
-					pric = pri / math.Pow(buyGridSize, float64(s.gridNum))
+					pric = pri / math.Pow(gridSize, float64(s.gridNum))
 					px, sz = s.getSz(pric, "buy", dbConf)
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
 					_, err = s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
@@ -317,7 +317,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 						return err
 					}
 				} else if order.Side == "sell" {
-					pric := pri / buyGridSize
+					pric := pri / gridSize
 					px, sz := s.getSz(pric, "buy", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
 					_, err := s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
@@ -325,7 +325,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 						log.Error("卖单成交，挂买单失败", "error", err)
 						return err
 					}
-					pric = pri * math.Pow(sellGridSize, float64(s.gridNum))
+					pric = pri * math.Pow(gridSize, float64(s.gridNum))
 					px, sz = s.getSz(pric, "sell", dbConf)
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
 					_, err = s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)

@@ -37,7 +37,7 @@ func (s *Server) GetDbConfig() (DbConfig, error) {
 		return dbConf, err
 	} else if s.conf.DbType == mysql {
 		cmdSql := fmt.Sprintf("select * from "+MGO_COLLECTION_CONFIG_NAME+" where instId = '%s'", s.instId)
-		err := s.mysql.QueryRow(cmdSql, &dbConf.InstId, &dbConf.BuyAmt, &dbConf.SellAmt, &dbConf.BuyNum, &dbConf.SellNum, &dbConf.BuyGridSize, &dbConf.SellGridSize, &dbConf.GridNum, &dbConf.Mode, &dbConf.Sec, &dbConf.MaxDiffNum, &dbConf.Status)
+		err := s.mysql.QueryRow(cmdSql, &dbConf.InstId, &dbConf.BuyAmt, &dbConf.SellAmt, &dbConf.BuyNum, &dbConf.SellNum, &dbConf.GridSize, &dbConf.GridNum, &dbConf.Mode, &dbConf.Sec, &dbConf.MaxDiffNum, &dbConf.Status)
 		return dbConf, err
 	} else {
 		return DbConfig{}, ErrDbType
