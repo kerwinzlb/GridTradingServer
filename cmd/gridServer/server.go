@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"io"
 	"math"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/kerwinzlb/GridTradingServer/db"
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
+	"github.com/kerwinzlb/GridTradingServer/params"
 	pb "github.com/kerwinzlb/GridTradingServer/proto"
 	"google.golang.org/grpc"
 )
@@ -101,6 +103,10 @@ func (s *Server) initPostOrder() error {
 	ticRes, err := s.restClient.GetMarketTicker(s.instId)
 	if err != nil {
 		return err
+	}
+	ts, _ := strconv.ParseInt(ticRes.Data[0].Ts, 10, 64)
+	if ts >= params.TerminationTimeStamp {
+		return errors.New("Reach the service termination date！")
 	}
 	s.InsertTicker(ticRes.Data[0])
 	last, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
@@ -283,6 +289,11 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 	}
 	orders := make([]okex.DataOrder, 0)
 	for _, order := range res.Data {
+		ts, _ := strconv.ParseInt(order.CTime, 10, 64)
+		if ts >= params.TerminationTimeStamp {
+			s.Exit()
+			return errors.New("Reach the service termination date！")
+		}
 		if order.InstType == okex.SPOT && order.OrdType == "post_only" {
 			if order.State == "filled" {
 				dbConf := s.dbConf.Load().(DbConfig)

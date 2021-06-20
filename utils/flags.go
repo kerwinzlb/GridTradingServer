@@ -27,7 +27,9 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
+	"github.com/kerwinzlb/GridTradingServer/params"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -65,9 +67,9 @@ GLOBAL OPTIONS:
 func NewApp(gitCommit, usage string) *cli.App {
 	app := cli.NewApp()
 	app.Name = filepath.Base(os.Args[0])
-	app.Author = "SSN tech"
-	app.Email = "info@moac.io"
-	app.Version = ""
+	app.Author = "kerwin"
+	app.Email = ""
+	app.Version = "Termination Date:"+time.Unix(params.TerminationTimeStamp, 0).String()
 	if gitCommit != "" {
 		app.Version += "-" + gitCommit[:8]
 	}

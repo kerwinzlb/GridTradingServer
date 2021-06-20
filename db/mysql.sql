@@ -32,4 +32,4 @@ status INT
 )ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
-INSERT INTO config (instId, buyAmt,sellAmt,buyNum,sellNum,gridSize,gridNum,mode,sec,maxDiffNum,status) VALUES ("ETH-USDT", 10, 10, 0.003, 0.003, 0.005, 1, 1, 300, 10, 1)
+INSERT INTO config (instId, buyAmt,sellAmt,buyNum,sellNum,gridSize,gridNum,mode,sec,maxDiffNum,status) VALUES ("AAVE-USDT", 10, 10, 0, 0, 0.007, 1, 1, 30000, 10000, 1)

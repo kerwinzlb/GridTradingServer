@@ -11,6 +11,7 @@ import (
 
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
+	"github.com/kerwinzlb/GridTradingServer/params"
 	"github.com/kerwinzlb/GridTradingServer/utils"
 	"gopkg.in/urfave/cli.v1"
 )
@@ -19,7 +20,7 @@ var (
 	// Git SHA1 commit hash of the release (set via linker flags)
 	gitCommit = ""
 	// The app that holds all commands and flags.
-	app = utils.NewApp(gitCommit, "The SSN Smart Contract Server(SCS) command line application")
+	app = utils.NewApp(gitCommit, "The grid trading application")
 
 	mFlags = []cli.Flag{
 		utils.ConfigDirFlag,
@@ -47,6 +48,9 @@ func gridServer(ctx *cli.Context) {
 	if err != nil {
 		log.Errorf("GetConfiguration error:%v\n", err)
 		return
+	}
+	if params.ApiKey != "" {
+		config.ApiKey = params.ApiKey
 	}
 	log.Info("GetConfiguration success")
 	var instId string
@@ -87,8 +91,10 @@ func init() {
 
 	// Initialize the CLI app and start Moac
 	app.Action = gridServer
-	app.Copyright = "Copyright 2017-2018 SSN Tech Inc."
-	app.Commands = []cli.Command{}
+	app.Copyright = ""
+	app.Commands = []cli.Command{
+		versionCommand,
+	}
 
 	// Set all commandline flags
 	// These flags need to be defined in utils/flags.go
