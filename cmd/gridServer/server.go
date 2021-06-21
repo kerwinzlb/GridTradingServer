@@ -444,7 +444,7 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) Exit() error {
-	s.mgo.DisConnect()
+	s.dbDisConnect()
 	s.Stop()
 	close(s.stop)
 	return nil
