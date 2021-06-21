@@ -11,6 +11,7 @@ clOrdId VARCHAR(70),
 side VARCHAR(10),
 px DOUBLE,
 sz DOUBLE,
+accFillSz DOUBLE,
 avgPx DOUBLE,
 fee DOUBLE,
 fillTime BIGINT,
@@ -32,4 +33,4 @@ status INT
 )ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 
-INSERT INTO config (instId, buyAmt,sellAmt,buyNum,sellNum,gridSize,gridNum,mode,sec,maxDiffNum,status) VALUES ("AAVE-USDT", 10, 10, 0, 0, 0.007, 1, 1, 30000, 10000, 1)
+INSERT INTO config (instId, buyAmt,sellAmt,buyNum,sellNum,gridSize,gridNum,mode,sec,maxDiffNum,status) VALUES ("AAVE-USDT", 10, 10, 0, 0, 0.007, 1, 1, 300, 15, 1)

@@ -136,7 +136,9 @@ func (s *Server) initPostOrder() error {
 }
 
 func (s *Server) MonitorLoop() {
-	sec := time.Duration(s.dbConf.Load().(DbConfig).Sec)
+	conf := s.dbConf.Load().(DbConfig)
+	sec := time.Duration(conf.Sec)
+	maxDiffNum := conf.MaxDiffNum
 	getDbConfTic := time.NewTicker(15 * time.Second)
 	moniOrdNumTic := time.NewTicker(30 * time.Second)
 	secTic := time.NewTicker(sec * time.Second)
@@ -176,6 +178,7 @@ func (s *Server) MonitorLoop() {
 					oldDbConf := s.dbConf.Load().(DbConfig)
 					if !reflect.DeepEqual(oldDbConf, dbConf) {
 						sec = time.Duration(dbConf.Sec)
+						maxDiffNum = dbConf.MaxDiffNum
 						s.dbConf.Store(dbConf)
 					}
 				}
@@ -192,9 +195,11 @@ func (s *Server) MonitorLoop() {
 				sellNum++
 			}
 			diffNum := buyNum - sellNum
-			if diffNum == -10 || diffNum == 10 {
+
+			if int(math.Abs(float64(diffNum))) == maxDiffNum {
 				buyNum = 0
 				sellNum = 0
+				log.Warn("MonitorLoop -> Risk control is triggered!", "buyNum", buyNum, "sellNum", sellNum, "maxDiffNum", maxDiffNum)
 				s.shutdown()
 				secTic.Stop()
 				secTic = time.NewTicker(sec * time.Second)
@@ -213,7 +218,7 @@ func (s *Server) monitorOrder() {
 	if len(trdp.Data) != s.gridNum*2 {
 		s.CancelAllOrders()
 		s.initPostOrder()
-		log.Error("monitorOrder triggered successfully!")
+		log.Warn("monitorOrder triggered successfully!", "trdp.Data", trdp.Data)
 	}
 }
 
@@ -241,7 +246,7 @@ func (s *Server) WsRecvLoop() {
 	for {
 		select {
 		case <-s.stop:
-			log.Info("WsRecvLoop return")
+			log.Warn("WsRecvLoop return")
 			return
 		default:
 		}
@@ -291,6 +296,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 	for _, order := range res.Data {
 		ts, _ := strconv.ParseInt(order.CTime, 10, 64)
 		if ts >= params.TerminationTimeStamp {
+			log.Warn("ReceivedOrdersDataCallback Reach the service termination date！")
 			s.Exit()
 			return errors.New("Reach the service termination date！")
 		}

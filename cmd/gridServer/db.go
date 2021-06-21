@@ -69,17 +69,18 @@ func (s *Server) InsertOrders(orders []okex.DataOrder) {
 	for _, order := range orders {
 		px, _ := strconv.ParseFloat(order.Px, 64)
 		sz, _ := strconv.ParseFloat(order.Sz, 64)
+		accFillSz, _ := strconv.ParseFloat(order.AccFillSz, 64)
 		avgPx, _ := strconv.ParseFloat(order.AvgPx, 64)
 		fee, _ := strconv.ParseFloat(order.Fee, 64)
 		fillTime, _ := strconv.ParseInt(order.FillTime, 10, 64)
 		cTime, _ := strconv.ParseInt(order.CTime, 10, 64)
 		if s.conf.DbType == mongo {
-			err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"instId": order.InstId, "ordId": order.OrdId, "clOrdId": order.ClOrdId, "side": order.Side, "px": px, "sz": sz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
+			err := s.mgo.InsertOne(MGO_DB_NAME, MGO_COLLECTION_ORDER_NAME, bson.M{"instId": order.InstId, "ordId": order.OrdId, "clOrdId": order.ClOrdId, "side": order.Side, "px": px, "sz": sz, "accFillSz": accFillSz, "avgPx": avgPx, "fee": fee, "fillTime": fillTime, "cTime": cTime})
 			if err != nil {
 				log.Error("InsertOrders mgo.InsertOne", "err", err)
 			}
 		} else if s.conf.DbType == mysql {
-			cmdSql := fmt.Sprintf("INSERT INTO "+MGO_COLLECTION_ORDER_NAME+" (instId, ordId, clOrdId, side, px, sz, avgPx, fee, fillTime, cTime) VALUES ('%s', '%s', '%s', '%s', '%f', '%f', '%f', '%f', '%d', '%d')", order.InstId, order.OrdId, order.ClOrdId, order.Side, px, sz, avgPx, fee, fillTime, cTime)
+			cmdSql := fmt.Sprintf("INSERT INTO "+MGO_COLLECTION_ORDER_NAME+" (instId, ordId, clOrdId, side, px, sz, accFillSz, avgPx, fee, fillTime, cTime) VALUES ('%s', '%s', '%s', '%s', '%f', '%f', '%f', '%f', '%f', '%d', '%d')", order.InstId, order.OrdId, order.ClOrdId, order.Side, px, sz, accFillSz, avgPx, fee, fillTime, cTime)
 			_, err := s.mysql.Execute(cmdSql)
 			if err != nil {
 				log.Error("InsertOrders mysql.Execute", "cmdSql", cmdSql, "err", err)
