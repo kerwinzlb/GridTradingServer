@@ -30,6 +30,16 @@ func (s *Server) dbConnect() error {
 	}
 }
 
+func (s *Server) dbDisConnect() error {
+	if s.conf.DbType == mongo {
+		return s.mgo.DisConnect()
+	} else if s.conf.DbType == mysql {
+		return s.mysql.DisConnect()
+	} else {
+		return ErrDbType
+	}
+}
+
 func (s *Server) GetDbConfig() (DbConfig, error) {
 	var dbConf DbConfig
 	if s.conf.DbType == mongo {
