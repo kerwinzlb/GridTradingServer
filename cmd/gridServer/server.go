@@ -213,12 +213,14 @@ func (s *Server) monitorOrder() {
 	trdp, err := s.GetTradeOrdersPending()
 	if err != nil {
 		log.Error("monitorOrder GetTradeOrdersPending", "err", err)
+		return
 	}
 	if len(trdp.Data) == 0 {
 		time.Sleep(time.Second)
 		trdp, err = s.GetTradeOrdersPending()
 		if err != nil {
 			log.Error("monitorOrder GetTradeOrdersPending", "err", err)
+			return
 		}
 	}
 	if len(trdp.Data) != s.gridNum*2 {
