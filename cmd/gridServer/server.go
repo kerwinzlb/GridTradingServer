@@ -156,7 +156,6 @@ func (s *Server) MonitorLoop() {
 				continue
 			}
 			status := atomic.LoadUint64(&s.status)
-			log.Warn("MonitorLoop", "dbConf.Status", dbConf.Status, "status", status)
 			if dbConf.Status == 0 {
 				log.Warn("MonitorLoop -> s.Stop() is called!")
 				s.Stop()
