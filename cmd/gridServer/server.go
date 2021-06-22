@@ -139,11 +139,9 @@ func (s *Server) MonitorLoop() {
 	conf := s.dbConf.Load().(DbConfig)
 	sec := time.Duration(conf.Sec)
 	maxDiffNum := conf.MaxDiffNum
-	getDbConfTic := time.NewTicker(15 * time.Second)
-	moniOrdNumTic := time.NewTicker(30 * time.Second)
+	getDbConfTic := time.NewTicker(time.Minute)
 	secTic := time.NewTicker(sec * time.Second)
 	defer getDbConfTic.Stop()
-	defer moniOrdNumTic.Stop()
 	defer secTic.Stop()
 
 	buyNum := 0
@@ -158,33 +156,37 @@ func (s *Server) MonitorLoop() {
 				continue
 			}
 			status := atomic.LoadUint64(&s.status)
-			if status == 0 {
-				if dbConf.Status == 1 {
+			log.Warn("MonitorLoop", "dbConf.Status", dbConf.Status, "status", status)
+			if dbConf.Status == 0 {
+				log.Warn("MonitorLoop -> s.Stop() is called!")
+				s.Stop()
+				buyNum = 0
+				sellNum = 0
+			} else if dbConf.Status == 1 {
+				if status == 1 {
+					go s.monitorOrder()
+					oldDbConf := s.dbConf.Load().(DbConfig)
+					if !reflect.DeepEqual(oldDbConf, dbConf) {
+						log.Warn("MonitorLoop -> dbConf is updated!", "oldDbConf", oldDbConf, "dbConf", dbConf)
+						if sec != time.Duration(dbConf.Sec) {
+							sec = time.Duration(dbConf.Sec)
+							secTic = time.NewTicker(sec * time.Second)
+							buyNum = 0
+							sellNum = 0
+						}
+						maxDiffNum = dbConf.MaxDiffNum
+						s.dbConf.Store(dbConf)
+					}
+				} else if status == 0 {
+					log.Warn("MonitorLoop -> s.Start() is called!")
 					err := s.Start()
 					if err != nil {
 						log.Error("MonitorLoop s.Start", "err", err)
 					}
 					buyNum = 0
 					sellNum = 0
-					secTic = time.NewTicker(sec * time.Second)
-				}
-			} else if status == 1 {
-				if dbConf.Status == 0 {
-					s.Stop()
-					secTic.Stop()
-					buyNum = 0
-					sellNum = 0
-				} else if dbConf.Status == 1 {
-					oldDbConf := s.dbConf.Load().(DbConfig)
-					if !reflect.DeepEqual(oldDbConf, dbConf) {
-						sec = time.Duration(dbConf.Sec)
-						maxDiffNum = dbConf.MaxDiffNum
-						s.dbConf.Store(dbConf)
-					}
 				}
 			}
-		case <-moniOrdNumTic.C:
-			s.monitorOrder()
 		case <-secTic.C:
 			buyNum = 0
 			sellNum = 0
@@ -197,12 +199,10 @@ func (s *Server) MonitorLoop() {
 			diffNum := buyNum - sellNum
 
 			if int(math.Abs(float64(diffNum))) == maxDiffNum {
+				log.Warn("MonitorLoop -> Risk control is triggered!", "buyNum", buyNum, "sellNum", sellNum, "maxDiffNum", maxDiffNum)
 				buyNum = 0
 				sellNum = 0
-				log.Warn("MonitorLoop -> Risk control is triggered!", "buyNum", buyNum, "sellNum", sellNum, "maxDiffNum", maxDiffNum)
 				s.shutdown()
-				secTic.Stop()
-				secTic = time.NewTicker(sec * time.Second)
 			}
 		case <-s.stop:
 			return
@@ -215,10 +215,17 @@ func (s *Server) monitorOrder() {
 	if err != nil {
 		log.Error("monitorOrder GetTradeOrdersPending", "err", err)
 	}
+	if len(trdp.Data) == 0 {
+		time.Sleep(time.Second)
+		trdp, err = s.GetTradeOrdersPending()
+		if err != nil {
+			log.Error("monitorOrder GetTradeOrdersPending", "err", err)
+		}
+	}
 	if len(trdp.Data) != s.gridNum*2 {
 		s.CancelAllOrders()
 		s.initPostOrder()
-		log.Warn("monitorOrder triggered successfully!", "trdp.Data", trdp.Data)
+		log.Warn("monitorOrder triggered successfully!", "len(trdp.Data)", len(trdp.Data), "trdp.Data", trdp.Data)
 	}
 }
 
@@ -268,6 +275,9 @@ func (s *Server) WsRecvLoop() {
 
 func (s *Server) Start() error {
 	dbConf := s.dbConf.Load().(DbConfig)
+	if dbConf.Status == 0 {
+		return errors.New("db config.status is 0!")
+	}
 	s.gridNum = dbConf.GridNum
 	err := s.initPostOrder()
 	if err != nil {
@@ -444,8 +454,8 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) Exit() error {
-	s.dbDisConnect()
 	s.Stop()
+	s.dbDisConnect()
 	close(s.stop)
 	return nil
 }
