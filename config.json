@@ -8,6 +8,7 @@
 	"ApiKey":"",
 	"SecretKey":"",
 	"Passphrase":"",
+	"DingUrl":"",
 	"TimeoutSecond": 45,
 	"IsPrint": false,
 	"I18n":"en_US"

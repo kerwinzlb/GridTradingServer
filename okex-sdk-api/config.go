@@ -39,6 +39,8 @@ type Config struct {
 	SecretKey string
 	// The Passphrase will be provided by you to further secure your API access.
 	Passphrase string
+	// DingDing robot url
+	DingUrl string
 	// Http request timeout.
 	TimeoutSecond int
 	// Whether to print API information

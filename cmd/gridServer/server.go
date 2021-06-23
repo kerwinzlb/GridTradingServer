@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"os"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/kerwinzlb/GridTradingServer/common"
 	"github.com/kerwinzlb/GridTradingServer/db"
+	"github.com/kerwinzlb/GridTradingServer/ding"
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
 	"github.com/kerwinzlb/GridTradingServer/params"
@@ -210,23 +212,20 @@ func (s *Server) MonitorLoop() {
 }
 
 func (s *Server) monitorOrder() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
 	trdp, err := s.GetTradeOrdersPending()
 	if err != nil {
 		log.Error("monitorOrder GetTradeOrdersPending", "err", err)
 		return
 	}
-	if len(trdp.Data) == 0 {
-		time.Sleep(time.Second)
-		trdp, err = s.GetTradeOrdersPending()
-		if err != nil {
-			log.Error("monitorOrder GetTradeOrdersPending", "err", err)
-			return
-		}
-	}
-	if len(trdp.Data) != s.gridNum*2 {
+	orderLen := len(trdp.Data)
+	if orderLen != s.gridNum*2 {
 		s.CancelAllOrders()
 		s.initPostOrder()
-		log.Warn("monitorOrder triggered successfully!", "len(trdp.Data)", len(trdp.Data), "trdp.Data", trdp.Data)
+		log.Warn("monitorOrder triggered successfully!", "orderLen", orderLen, "trdp.Data", trdp.Data)
+
+		ding.PostRobotMessage(s.conf.DingUrl, fmt.Sprintf(s.instId+"交易对未成交订单数量:%d != 格子数量:%d, 撤掉所有未成交订单并重新挂单", orderLen, s.gridNum*2))
 	}
 }
 
@@ -294,9 +293,12 @@ func (s *Server) shutdown() {
 	if err != nil {
 		log.Error("shutdown UpdateOne", "err", err)
 	}
+	ding.PostRobotMessage(s.conf.DingUrl, s.instId+"交易对服务停止！")
 }
 
 func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
 	res := new(okex.WSOrdersResponse)
 	err := okex.JsonBytes2Struct(rspMsg, res)
 	if err != nil {
