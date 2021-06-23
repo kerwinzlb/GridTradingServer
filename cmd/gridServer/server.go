@@ -11,7 +11,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,7 +43,6 @@ type Server struct {
 	mgo        *db.Mongo
 	mysql      *db.Mysql
 	status     uint64
-	lock       *sync.RWMutex
 
 	sideChan chan string
 	stop     chan struct{} // Channel to wait for termination notifications
@@ -55,7 +53,6 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 		conf:       conf,
 		instId:     instId,
 		restClient: okex.NewClient(*conf),
-		lock:       new(sync.RWMutex),
 		sideChan:   make(chan string, 100),
 		stop:       make(chan struct{}),
 	}
@@ -212,8 +209,6 @@ func (s *Server) MonitorLoop() {
 }
 
 func (s *Server) monitorOrder() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
 	trdp, err := s.GetTradeOrdersPending()
 	if err != nil {
 		log.Error("monitorOrder GetTradeOrdersPending", "err", err)
@@ -221,11 +216,20 @@ func (s *Server) monitorOrder() {
 	}
 	orderLen := len(trdp.Data)
 	if orderLen != s.gridNum*2 {
-		s.CancelAllOrders()
-		s.initPostOrder()
-		log.Warn("monitorOrder triggered successfully!", "orderLen", orderLen, "trdp.Data", trdp.Data)
-
-		ding.PostRobotMessage(s.conf.DingUrl, fmt.Sprintf(s.instId+"交易对未成交订单数量:%d != 格子数量:%d, 撤掉所有未成交订单并重新挂单", orderLen, s.gridNum*2))
+		time.Sleep(600 * time.Millisecond)
+		trdp, err := s.GetTradeOrdersPending()
+		if err != nil {
+			log.Error("monitorOrder GetTradeOrdersPending", "err", err)
+			return
+		}
+		orderLen = len(trdp.Data)
+		if orderLen != s.gridNum*2 {
+			s.CancelAllOrders()
+			s.initPostOrder()
+			msg := fmt.Sprintf(s.instId+"交易对未成交订单数量:%d != 格子数量:%d, 撤掉所有未成交订单并重新挂单", orderLen, s.gridNum*2)
+			ding.PostRobotMessage(s.conf.DingUrl, msg)
+			log.Warn("monitorOrder triggered successfully!", "orderLen", orderLen, "trdp.Data", trdp.Data)
+		}
 	}
 }
 
@@ -297,8 +301,6 @@ func (s *Server) shutdown() {
 }
 
 func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
 	res := new(okex.WSOrdersResponse)
 	err := okex.JsonBytes2Struct(rspMsg, res)
 	if err != nil {
