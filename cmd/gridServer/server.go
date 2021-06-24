@@ -279,15 +279,14 @@ func (s *Server) WsRecvLoop() {
 
 func (s *Server) Start() error {
 	dbConf := s.dbConf.Load().(DbConfig)
-	if dbConf.Status == 0 {
-		return errors.New("db config.status is 0!")
-	}
 	s.gridNum = dbConf.GridNum
-	err := s.initPostOrder()
-	if err != nil {
-		return err
+	if dbConf.Status == 1 {
+		err := s.initPostOrder()
+		if err != nil {
+			return err
+		}
+		atomic.StoreUint64(&s.status, 1)
 	}
-	atomic.StoreUint64(&s.status, 1)
 	return nil
 }
 
