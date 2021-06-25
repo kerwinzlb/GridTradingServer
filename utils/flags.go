@@ -69,7 +69,7 @@ func NewApp(gitCommit, usage string) *cli.App {
 	app.Name = filepath.Base(os.Args[0])
 	app.Author = "kerwin"
 	app.Email = ""
-	app.Version = "Termination Date:"+time.Unix(params.TerminationTimeStamp, 0).String()
+	app.Version = "Termination Date:" + time.Unix(params.TerminationTimeStamp/1000, 0).String()
 	if gitCommit != "" {
 		app.Version += "-" + gitCommit[:8]
 	}

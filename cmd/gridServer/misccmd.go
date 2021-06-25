@@ -27,7 +27,7 @@ The output of this command is supposed to be machine-readable.
 
 func version(ctx *cli.Context) error {
 	fmt.Println(strings.Title(os.Args[0]))
-	fmt.Println("Version:Termination Date", time.Unix(params.TerminationTimeStamp, 0).String())
+	fmt.Println("Version:Termination Date", time.Unix(params.TerminationTimeStamp/1000, 0).String())
 	if gitCommit != "" {
 		fmt.Println("Git Commit:", gitCommit)
 	}
