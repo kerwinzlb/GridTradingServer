@@ -211,28 +211,28 @@ func (s *Server) MonitorLoop() {
 }
 
 func (s *Server) monitorOrder() {
-	trdp, err := s.GetTradeOrdersPending()
-	if err != nil {
-		log.Error("monitorOrder GetTradeOrdersPending", "err", err)
-		return
-	}
-	orderLen := len(trdp.Data)
-	if orderLen != s.gridNum*2 {
-		time.Sleep(600 * time.Millisecond)
+	orderLen := 0
+	n := 2
+	for i := 0; i < n; i++ {
 		trdp, err := s.GetTradeOrdersPending()
 		if err != nil {
 			log.Error("monitorOrder GetTradeOrdersPending", "err", err)
 			return
 		}
 		orderLen = len(trdp.Data)
-		if orderLen != s.gridNum*2 {
-			s.CancelAllOrders()
-			s.initPostOrder()
-			msg := fmt.Sprintf(s.instId+"交易对未成交订单数量:%d != 格子数量:%d, 撤掉所有未成交订单并重新挂单", orderLen, s.gridNum*2)
-			ding.PostRobotMessage(s.conf.DingUrl, msg)
-			log.Warn("monitorOrder triggered successfully!", "orderLen", orderLen, "trdp.Data", trdp.Data)
+		if orderLen == s.gridNum*2 {
+			return
+		}
+		log.Warn("monitorOrder", "orderSum", orderLen, "gridSum", s.gridNum*2)
+		if i != n - 1 {
+			time.Sleep(600 * time.Millisecond)
 		}
 	}
+	s.CancelAllOrders()
+	s.initPostOrder()
+	msg := fmt.Sprintf(s.instId+"交易对未成交订单数量:%d != 格子数量:%d, 撤掉所有未成交订单并重新挂单", orderLen, s.gridNum*2)
+	ding.PostRobotMessage(s.conf.DingUrl, msg)
+	log.Warn("monitorOrder triggered successfully!")
 }
 
 func (s *Server) grpcConnect() (pb.Ws_GetOrderInfoClient, error) {
