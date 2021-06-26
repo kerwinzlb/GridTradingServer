@@ -117,7 +117,6 @@ func (s *Server) initPostOrder() error {
 		pric := last / math.Pow((gridSize), float64(i))
 		px, sz := s.getSz(pric, "buy", dbConf)
 		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - i)))
-
 		_, err := s.PostBuyTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
 		if err != nil {
 			return err
@@ -125,7 +124,6 @@ func (s *Server) initPostOrder() error {
 
 		pric = last * math.Pow((gridSize), float64(i))
 		px, sz = s.getSz(pric, "sell", dbConf)
-		px = strconv.FormatFloat(pric, 'f', s.tickSzN, 64)
 		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + i)))
 		_, err = s.PostSellTradeOrder(strings.Split(s.instId, "-")[0]+clOrdId, px, sz)
 		if err != nil {
