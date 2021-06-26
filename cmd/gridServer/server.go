@@ -321,7 +321,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 			if order.State == "filled" {
 				dbConf := s.dbConf.Load().(DbConfig)
 				gridSize := 1 + s.gridSize
-				clOrdId, _ := hex.DecodeString(strings.Trim(order.ClOrdId, prefix))
+				clOrdId, _ := hex.DecodeString(strings.TrimLeft(order.ClOrdId, prefix))
 				index, _ := strconv.Atoi(string(clOrdId))
 				orders = append(orders, order)
 				pri, _ := strconv.ParseFloat(order.Px, 64)
