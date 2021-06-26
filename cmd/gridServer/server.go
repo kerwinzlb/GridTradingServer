@@ -39,6 +39,7 @@ type Server struct {
 	lotSzN     int
 	minSzN     int
 	gridNum    int
+	gridSize   float64
 	restClient *okex.Client
 	mgo        *db.Mongo
 	mysql      *db.Mysql
@@ -111,7 +112,7 @@ func (s *Server) initPostOrder() error {
 	last, _ := strconv.ParseFloat(ticRes.Data[0].Last, 64)
 	index := 0
 	dbConf := s.dbConf.Load().(DbConfig)
-	gridSize := 1 + dbConf.GridSize
+	gridSize := 1 + s.gridSize
 	for i := s.gridNum; i > 0; i-- {
 		pric := last / math.Pow((gridSize), float64(i))
 		px, sz := s.getSz(pric, "buy", dbConf)
@@ -138,7 +139,7 @@ func (s *Server) MonitorLoop() {
 	conf := s.dbConf.Load().(DbConfig)
 	sec := time.Duration(conf.Sec)
 	maxDiffNum := conf.MaxDiffNum
-	getDbConfTic := time.NewTicker(time.Minute)
+	getDbConfTic := time.NewTicker(30 * time.Second)
 	secTic := time.NewTicker(sec * time.Second)
 	defer getDbConfTic.Stop()
 	defer secTic.Stop()
@@ -177,6 +178,7 @@ func (s *Server) MonitorLoop() {
 					}
 				} else if status == 0 {
 					log.Warn("MonitorLoop -> s.Start() is called!")
+					s.dbConf.Store(dbConf)
 					err := s.Start()
 					if err != nil {
 						log.Error("MonitorLoop s.Start", "err", err)
@@ -280,6 +282,7 @@ func (s *Server) WsRecvLoop() {
 func (s *Server) Start() error {
 	dbConf := s.dbConf.Load().(DbConfig)
 	s.gridNum = dbConf.GridNum
+	s.gridSize = dbConf.GridSize
 	if dbConf.Status == 1 {
 		err := s.initPostOrder()
 		if err != nil {
@@ -317,7 +320,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 		if order.InstType == okex.SPOT && order.OrdType == "post_only" {
 			if order.State == "filled" {
 				dbConf := s.dbConf.Load().(DbConfig)
-				gridSize := 1 + dbConf.GridSize
+				gridSize := 1 + s.gridSize
 				clOrdId, _ := hex.DecodeString(strings.Trim(order.ClOrdId, s.instId))
 				index, _ := strconv.Atoi(string(clOrdId))
 				orders = append(orders, order)
