@@ -4,13 +4,14 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/kerwinzlb/GridTradingServer/log"
 )
 
 func PostRobotMessage(url, msg string) {
 	//模拟一个post提交请求
-	resp, err := http.Post(url, "application/json;charset=utf-8", strings.NewReader(`{"msgtype": "text", "text": {"content":"OKEX:`+msg+`"}}`))
+	resp, err := http.Post(url, "application/json;charset=utf-8", strings.NewReader(`{"msgtype": "text", "text": {"content":"OKEX:`+"["+time.Now().Format("2006-01-02 15:04:05")+"]"+msg+`"}}`))
 	if err != nil {
 		log.Error("PostRobotMessage http.Post", "err", err)
 		return
