@@ -14,5 +14,9 @@ func FloatRound(f float64, n int) float64 {
 }
 
 func FloatRoundLen(f string) int {
-	return len(strings.Split(f, ".")[1])
+	strArr := strings.Split(f, ".")
+	if len(strArr) > 1 {
+		return len(strArr[1])
+	}
+	return 0
 }
