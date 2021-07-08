@@ -63,6 +63,7 @@ func New(instId string, conf *okex.Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Warn("New", "TickSz", pubRes.Data[0].TickSz, "LotSz", pubRes.Data[0].LotSz, "MinSz", pubRes.Data[0].MinSz)
 	s.tickSzN = common.FloatRoundLen(pubRes.Data[0].TickSz)
 	s.lotSzN = common.FloatRoundLen(pubRes.Data[0].LotSz)
 	s.minSzN = common.FloatRoundLen(pubRes.Data[0].MinSz)
