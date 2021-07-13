@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync/atomic"
+	"time"
 
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
@@ -37,7 +38,6 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 		return err
 	}
 
-	
 	orderChanMap := s.orderChanMap.Load()
 	if orderChanMap != nil {
 		instid := ""
@@ -57,9 +57,9 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 func (s *Server) Start() error {
 	s.wsClient = okex.NewAgent(s.conf, s.ReceivedOrdersDataCallback, s.Start)
 	err := s.wsClient.Start()
-	if err != nil {
-		log.Error("Start s.wsClient.Start", "err", err)
-		return err
+	for err != nil {
+		time.Sleep(time.Second)
+		err = s.wsClient.Start()
 	}
 	err = s.wsClient.Login()
 	if err != nil {
@@ -98,7 +98,7 @@ func (s *Server) GetOrderInfo(req *pb.GetOrderRequest, srv pb.Ws_GetOrderInfoSer
 
 	for {
 		select {
-		case msg := <- orderChan:
+		case msg := <-orderChan:
 			r := new(pb.GetOrderResponse)
 			r.Replybody = msg
 			err := srv.Send(r)
@@ -106,10 +106,10 @@ func (s *Server) GetOrderInfo(req *pb.GetOrderRequest, srv pb.Ws_GetOrderInfoSer
 				log.Error("GetOrderInfo stream.Send", "err", err)
 				return err
 			}
-		case <- s.stop:
+		case <-s.stop:
 			break
 		}
-		
+
 	}
 	return nil
 }

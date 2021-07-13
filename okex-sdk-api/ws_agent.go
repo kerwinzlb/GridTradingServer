@@ -33,11 +33,11 @@ type OKWSAgent struct {
 
 func NewAgent(config *Config, c ReceivedDataCallback, f ErrorCallback) *OKWSAgent {
 	a := &OKWSAgent{
-		baseUrl: config.WSEndpoint,
-		config:  config,
-		stopCh:  make(chan interface{}, 16),
-		callback:c,
-		restart: f,
+		baseUrl:  config.WSEndpoint,
+		config:   config,
+		stopCh:   make(chan interface{}, 16),
+		callback: c,
+		restart:  f,
 	}
 	return a
 }
@@ -45,7 +45,7 @@ func NewAgent(config *Config, c ReceivedDataCallback, f ErrorCallback) *OKWSAgen
 func (a *OKWSAgent) Start() error {
 	c, _, err := websocket.DefaultDialer.Dial(a.baseUrl, nil)
 	if err != nil {
-		log.Errorf("websocket dial:%+v", err)
+		log.Error("websocket dial", "err", err)
 		return err
 	} else {
 		if a.config.IsPrint {
