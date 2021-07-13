@@ -448,6 +448,7 @@ func (s *Server) CancelAllOrders() {
 	trdp, err := s.GetTradeOrdersPending()
 	if err != nil {
 		log.Error("CancelAllOrders GetTradeOrdersPending", "err", err)
+		return
 	}
 	for _, order := range trdp.Data {
 		_, err := s.restClient.PostTradeCancelOrder(s.instId, order.OrdId, "")
