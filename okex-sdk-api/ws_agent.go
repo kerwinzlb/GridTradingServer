@@ -36,7 +36,7 @@ func NewAgent(config *Config, c ReceivedDataCallback, f ErrorCallback) *OKWSAgen
 	a := &OKWSAgent{
 		baseUrl:  config.WSEndpoint,
 		config:   config,
-		wCh:      make(chan struct{}, 10),
+		wCh:      make(chan struct{}, 100),
 		stopCh:   make(chan interface{}, 16),
 		callback: c,
 		restart:  f,
@@ -56,7 +56,6 @@ func (a *OKWSAgent) Start() error {
 		a.conn = c
 		go a.work()
 		go a.receive()
-		go a.finalize()
 	}
 
 	return nil
@@ -127,21 +126,6 @@ func (a *OKWSAgent) Stop() error {
 	return nil
 }
 
-func (a *OKWSAgent) finalize() error {
-	defer func() {
-		log.Info("Finalize End. Connection to WebSocket is closed.")
-	}()
-
-	select {
-	case <-a.stopCh:
-		if a.conn != nil {
-			return a.conn.Close()
-		}
-	}
-
-	return nil
-}
-
 func (a *OKWSAgent) ping() {
 	msg := "ping"
 	// log.Debugf("Send Msg: %s", msg)
@@ -198,6 +182,9 @@ func (a *OKWSAgent) receive() {
 	for {
 		select {
 		case <-a.stopCh:
+			if a.conn != nil {
+				a.conn.Close()
+			}
 			return
 		default:
 		}
