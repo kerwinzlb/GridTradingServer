@@ -24,6 +24,7 @@ type OKWSAgent struct {
 	config  *Config
 	conn    *websocket.Conn
 
+	wCh    chan struct{}
 	stopCh chan interface{}
 
 	callback   ReceivedDataCallback
@@ -35,6 +36,7 @@ func NewAgent(config *Config, c ReceivedDataCallback, f ErrorCallback) *OKWSAgen
 	a := &OKWSAgent{
 		baseUrl:  config.WSEndpoint,
 		config:   config,
+		wCh:      make(chan struct{}, 10),
 		stopCh:   make(chan interface{}, 16),
 		callback: c,
 		restart:  f,
@@ -120,10 +122,6 @@ func (a *OKWSAgent) Login() error {
 	return nil
 }
 
-func (a *OKWSAgent) keepalive() {
-	a.ping()
-}
-
 func (a *OKWSAgent) Stop() error {
 	close(a.stopCh)
 	return nil
@@ -167,13 +165,24 @@ func (a *OKWSAgent) work() {
 		log.Info("Work End. ")
 	}()
 
-	ticker := time.NewTicker(20 * time.Second)
-	defer ticker.Stop()
+	pingTic := time.NewTicker(10 * time.Second)
+	defer pingTic.Stop()
+	timeoutTic := new(time.Ticker)
+	defer timeoutTic.Stop()
 
 	for {
 		select {
-		case <-ticker.C:
-			a.keepalive()
+		case <-pingTic.C:
+			a.ping()
+			timeoutTic = time.NewTicker(5 * time.Second)
+		case <-timeoutTic.C:
+			log.Error("work() timeoutTic trigger, Websocket to restart!")
+			a.Stop()
+			a.restart()
+			continue
+		case <-a.wCh:
+			pingTic = time.NewTicker(10 * time.Second)
+			timeoutTic.Stop()
 		case <-a.stopCh:
 			return
 
@@ -199,6 +208,7 @@ func (a *OKWSAgent) receive() {
 			a.restart()
 			continue
 		}
+		a.wCh <- struct{}{}
 		go a.callback(message)
 	}
 }
