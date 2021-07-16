@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"syscall"
@@ -102,6 +103,10 @@ func init() {
 	// These flags need to be defined in utils/flags.go
 	app.Flags = append(app.Flags, mFlags...)
 	sort.Sort(cli.FlagsByName(app.Flags))
+	app.Before = func(ctx *cli.Context) error {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+		return nil
+	}
 }
 
 /*
