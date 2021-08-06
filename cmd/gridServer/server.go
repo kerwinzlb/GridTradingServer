@@ -418,6 +418,7 @@ func (s *Server) PostBuyTradeOrder(clOrdId, px, sz string) (string, error) {
 	req["sz"] = sz
 	res, err := s.restClient.PostTradeOrder(&req)
 	if err != nil {
+		log.Error("PostBuyTradeOrder", "Code", res.Code, "Msg", res.Msg, "SCode", res.Data[0].SCode, "sMsg", res.Data[0].SMsg)
 		return "", err
 	}
 	return res.Data[0].OrdId, nil
@@ -435,6 +436,7 @@ func (s *Server) PostSellTradeOrder(clOrdId, px, sz string) (string, error) {
 	req["sz"] = sz
 	res, err := s.restClient.PostTradeOrder(&req)
 	if err != nil {
+		log.Error("PostSellTradeOrder", "Code", res.Code, "Msg", res.Msg, "SCode", res.Data[0].SCode, "sMsg", res.Data[0].SMsg)
 		return "", err
 	}
 	return res.Data[0].OrdId, nil
