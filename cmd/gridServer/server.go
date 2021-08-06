@@ -118,7 +118,8 @@ func (s *Server) initPostOrder(dbFlag bool) error {
 	index := 0
 	dbConf := s.dbConf.Load().(DbConfig)
 	gridSize := 1 + s.gridSize
-	prefix := strings.Split(s.instId, "-")[0]
+	strList := strings.Split(s.instId, "-")
+	prefix := strList[0] + strList[1]
 	for i := s.gridNum; i > 0; i-- {
 		pric := last / math.Pow((gridSize), float64(i))
 		px, sz := s.getSz(pric, "buy", dbConf)
@@ -316,7 +317,8 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 		return err
 	}
 	orders := make([]okex.DataOrder, 0)
-	prefix := strings.Split(s.instId, "-")[0]
+	strList := strings.Split(s.instId, "-")
+	prefix := strList[0] + strList[1]
 	for _, order := range res.Data {
 		ts, _ := strconv.ParseInt(order.CTime, 10, 64)
 		if ts >= params.TerminationTimeStamp {
