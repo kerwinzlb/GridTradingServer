@@ -103,10 +103,12 @@ func (s *Server) getSz(pric float64, side string, dbConf DbConfig) (string, stri
 func (s *Server) initPostOrder(dbFlag bool) error {
 	ticRes, err := s.restClient.GetMarketTicker(s.instId)
 	if err != nil {
+		log.Error("initPostOrder GetMarketTicker", "err", err)
 		return err
 	}
 	ts, _ := strconv.ParseInt(ticRes.Data[0].Ts, 10, 64)
 	if ts >= params.TerminationTimeStamp {
+		log.Error("initPostOrder Reach the service termination date！")
 		return errors.New("Reach the service termination date！")
 	}
 	if dbFlag {
@@ -123,6 +125,7 @@ func (s *Server) initPostOrder(dbFlag bool) error {
 		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - i)))
 		_, err := s.PostBuyTradeOrder(prefix+clOrdId, px, sz)
 		if err != nil {
+			log.Error("initPostOrder PostBuyTradeOrder", "err", err)
 			return err
 		}
 
@@ -131,6 +134,7 @@ func (s *Server) initPostOrder(dbFlag bool) error {
 		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + i)))
 		_, err = s.PostSellTradeOrder(prefix+clOrdId, px, sz)
 		if err != nil {
+			log.Error("initPostOrder PostSellTradeOrder", "err", err)
 			return err
 		}
 	}
