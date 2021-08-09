@@ -271,17 +271,25 @@ func (s *Server) WsRecvLoop() {
 		default:
 		}
 
-		r, err := stream.Recv()
-		if err != nil {
-			if err != io.EOF {
-				log.Error("WsRecvLoop stream.Recv", "err", err)
-				stream, err = s.grpcConnect()
-				if err != nil {
-					log.Error("WsRecvLoop grpcConnect", "err", err)
+		if stream != nil {
+			r, err := stream.Recv()
+			if err != nil {
+				if err != io.EOF {
+					log.Error("WsRecvLoop stream.Recv", "err", err)
+					stream, err = s.grpcConnect()
+					if err != nil {
+						log.Error("WsRecvLoop grpcConnect", "err", err)
+					}
 				}
+			} else {
+				go s.ReceivedOrdersDataCallback(r.Replybody)
 			}
 		} else {
-			go s.ReceivedOrdersDataCallback(r.Replybody)
+			stream, err = s.grpcConnect()
+			if err != nil {
+				log.Error("WsRecvLoop grpcConnect", "err", err)
+			}
+			time.Sleep(time.Second)
 		}
 	}
 }
