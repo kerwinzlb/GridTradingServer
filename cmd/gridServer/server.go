@@ -124,7 +124,7 @@ func (s *Server) initPostOrder(dbFlag bool) error {
 		pric := last / math.Pow((gridSize), float64(i))
 		px, sz := s.getSz(pric, "buy", dbConf)
 		clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - i)))
-		_, err := s.PostBuyTradeOrder(prefix+clOrdId, px, sz)
+		_, err := s.PostTradeOrder(prefix+clOrdId, px, sz, "buy")
 		if err != nil {
 			log.Error("initPostOrder PostBuyTradeOrder", "err", err)
 			return err
@@ -133,7 +133,7 @@ func (s *Server) initPostOrder(dbFlag bool) error {
 		pric = last * math.Pow((gridSize), float64(i))
 		px, sz = s.getSz(pric, "sell", dbConf)
 		clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + i)))
-		_, err = s.PostSellTradeOrder(prefix+clOrdId, px, sz)
+		_, err = s.PostTradeOrder(prefix+clOrdId, px, sz, "sell")
 		if err != nil {
 			log.Error("initPostOrder PostSellTradeOrder", "err", err)
 			return err
@@ -347,7 +347,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 					pric := pri * gridSize
 					px, sz := s.getSz(pric, "sell", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index + 1)))
-					_, err := s.PostSellTradeOrder(prefix+clOrdId, px, sz)
+					_, err := s.PostTradeOrder(prefix+clOrdId, px, sz, "sell")
 					if err != nil {
 						log.Error("买单成交，挂卖单失败", "error", err)
 						return err
@@ -356,7 +356,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 					pric = pri / math.Pow(gridSize, float64(s.gridNum))
 					px, sz = s.getSz(pric, "buy", dbConf)
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index - s.gridNum)))
-					_, err = s.PostBuyTradeOrder(prefix+clOrdId, px, sz)
+					_, err = s.PostTradeOrder(prefix+clOrdId, px, sz, "buy")
 					if err != nil {
 						log.Error("买单成交，挂买单失败", "error", err)
 						return err
@@ -371,7 +371,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 					pric := pri / gridSize
 					px, sz := s.getSz(pric, "buy", dbConf)
 					clOrdId := hex.EncodeToString([]byte(strconv.Itoa(index - 1)))
-					_, err := s.PostBuyTradeOrder(prefix+clOrdId, px, sz)
+					_, err := s.PostTradeOrder(prefix+clOrdId, px, sz, "buy")
 					if err != nil {
 						log.Error("卖单成交，挂买单失败", "error", err)
 						return err
@@ -379,7 +379,7 @@ func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
 					pric = pri * math.Pow(gridSize, float64(s.gridNum))
 					px, sz = s.getSz(pric, "sell", dbConf)
 					clOrdId = hex.EncodeToString([]byte(strconv.Itoa(index + s.gridNum)))
-					_, err = s.PostSellTradeOrder(prefix+clOrdId, px, sz)
+					_, err = s.PostTradeOrder(prefix+clOrdId, px, sz, "sell")
 					if err != nil {
 						log.Error("卖单成交，挂卖单失败", "error", err)
 						return err
@@ -416,30 +416,13 @@ func (s *Server) PostTradeCancelBatchOrders(ordIds, clOrdIds []string) error {
 	return nil
 }
 
-func (s *Server) PostBuyTradeOrder(clOrdId, px, sz string) (string, error) {
+func (s *Server) PostTradeOrder(clOrdId, px, sz, side string) (string, error) {
 	req := okex.NewParams()
 	req["instId"] = s.instId
 	req["tdMode"] = "cash"
 	// req["ccy"] = "USDT"
 	req["clOrdId"] = clOrdId
-	req["side"] = "buy"
-	req["ordType"] = "post_only"
-	req["px"] = strings.TrimRight(strings.TrimRight(px, "0"), ".")
-	req["sz"] = sz
-	res, err := s.restClient.PostTradeOrder(&req)
-	if err != nil {
-		return "", err
-	}
-	return res.Data[0].OrdId, nil
-}
-
-func (s *Server) PostSellTradeOrder(clOrdId, px, sz string) (string, error) {
-	req := okex.NewParams()
-	req["instId"] = s.instId
-	req["tdMode"] = "cash"
-	// req["ccy"] = "USDT"
-	req["clOrdId"] = clOrdId
-	req["side"] = "sell"
+	req["side"] = side
 	req["ordType"] = "post_only"
 	req["px"] = strings.TrimRight(strings.TrimRight(px, "0"), ".")
 	req["sz"] = sz
