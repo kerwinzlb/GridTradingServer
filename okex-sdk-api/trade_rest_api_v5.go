@@ -1,5 +1,7 @@
 package okex
 
+import "github.com/kerwinzlb/GridTradingServer/log"
+
 // /*
 // 币币账户信息
 // 获取币币账户资产列表(仅展示拥有资金的币对)，查询各币种的余额、冻结和可用等信息。
@@ -259,6 +261,7 @@ func (client *Client) PostTradeOrder(orderInfo *map[string]string) (result *Orde
 	r := new(OrderResult)
 
 	if _, err := client.Request(POST, TRADE_ORDER, orderInfo, r); err != nil {
+		log.Error("PostTradeOrder", "err", err, "r", r)
 		return nil, err
 	}
 
