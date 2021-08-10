@@ -289,7 +289,7 @@ func (s *Server) WsRecvLoop() {
 			if err != nil {
 				log.Error("WsRecvLoop grpcConnect", "err", err)
 			}
-			time.Sleep(time.Second)
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
