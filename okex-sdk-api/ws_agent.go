@@ -191,8 +191,6 @@ func (a *OKWSAgent) receive() {
 		_, message, err := a.conn.ReadMessage()
 		if err != nil {
 			log.Error("receive() ReadMessage", "message", message, "err", err)
-			a.Stop()
-			a.restart()
 			continue
 		}
 		a.wCh <- struct{}{}
