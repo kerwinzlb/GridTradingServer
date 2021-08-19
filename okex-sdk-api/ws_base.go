@@ -18,18 +18,7 @@ import (
 	"github.com/kerwinzlb/GridTradingServer/log"
 )
 
-func subscribeOp(channel, instType string) (*map[string]interface{}, error) {
-
-	// strArgs := []string{}
-
-	// for i := 0; i < len(sts); i++ {
-	// 	channel, err := sts[i].ToString()
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	strArgs = append(strArgs, channel)
-	// }
-
+func subscribeOp(channel, instType, instId string) (*map[string]interface{}, error) {
 	req := make(map[string]interface{})
 	req["op"] = CHNL_EVENT_SUBSCRIBE
 
@@ -37,6 +26,7 @@ func subscribeOp(channel, instType string) (*map[string]interface{}, error) {
 	arg := make(map[string]string)
 	arg["channel"] = channel
 	arg["instType"] = instType
+	arg["instId"] = instId
 	args = append(args, arg)
 
 	req["args"] = args

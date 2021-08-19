@@ -1,11 +1,9 @@
 package main
 
 import (
-	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"os"
 	"reflect"
@@ -20,8 +18,6 @@ import (
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
 	"github.com/kerwinzlb/GridTradingServer/params"
-	pb "github.com/kerwinzlb/GridTradingServer/proto"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -41,6 +37,7 @@ type Server struct {
 	gridNum    int
 	gridSize   float64
 	restClient *okex.Client
+	wsClient   *okex.OKWSAgent
 	mgo        *db.Mongo
 	mysql      *db.Mysql
 	status     uint64
@@ -163,7 +160,7 @@ func (s *Server) MonitorLoop() {
 				continue
 			}
 			status := atomic.LoadUint64(&s.status)
-			if dbConf.Status == 0 {
+			if dbConf.Status == 0 && status == 1 {
 				log.Warn("MonitorLoop -> s.Stop() is called!")
 				s.Stop()
 				buyNum = 0
@@ -242,59 +239,33 @@ func (s *Server) monitorOrder() {
 	log.Warn("monitorOrder triggered successfully!")
 }
 
-func (s *Server) grpcConnect() (pb.Ws_GetOrderInfoClient, error) {
-	conn, err := grpc.Dial(s.conf.WsServerAddr+":"+strconv.Itoa(s.conf.WsServerPort), grpc.WithInsecure())
-	// defer conn.Close()
+func (s *Server) WsStart() error {
+	s.wsClient = okex.NewAgent(s.conf, s.ReceivedOrdersDataCallback, s.WsStart)
+	err := s.wsClient.Start()
+	for err != nil {
+		time.Sleep(time.Second)
+		err = s.wsClient.Start()
+	}
+	err = s.wsClient.Login()
 	if err != nil {
-		log.Error("grpcConnect grpc.Dial", "err", err)
-		return nil, err
+		log.Error("Start s.wsClient.Login", "err", err)
+		return err
 	}
-	c := pb.NewWsClient(conn)
-
-	req := new(pb.GetOrderRequest)
-	req.InstId = s.instId
-
-	return c.GetOrderInfo(context.Background(), req)
-}
-
-func (s *Server) WsRecvLoop() {
-	stream, err := s.grpcConnect()
+	log.Info("websocket Login success")
+	err = s.wsClient.Subscribe(okex.CHNL_OEDERS, okex.SPOT, s.instId)
 	if err != nil {
-		log.Error("WsRecvLoop return grpcConnect", "err", err)
-		return
+		log.Error("Start s.wsClient.Subscribe", "err", err)
+		return err
 	}
-	for {
-		select {
-		case <-s.stop:
-			log.Warn("WsRecvLoop return")
-			return
-		default:
-		}
-
-		if stream != nil {
-			r, err := stream.Recv()
-			if err != nil {
-				if err != io.EOF {
-					log.Error("WsRecvLoop stream.Recv", "err", err)
-					stream, err = s.grpcConnect()
-					if err != nil {
-						log.Error("WsRecvLoop grpcConnect", "err", err)
-					}
-				}
-			} else {
-				go s.ReceivedOrdersDataCallback(r.Replybody)
-			}
-		} else {
-			stream, err = s.grpcConnect()
-			if err != nil {
-				log.Error("WsRecvLoop grpcConnect", "err", err)
-			}
-			time.Sleep(5 * time.Second)
-		}
-	}
+	log.Info("websocket Subscribe success")
+	return nil
 }
 
 func (s *Server) Start() error {
+	err := s.WsStart()
+	if err != nil {
+		return err
+	}
 	dbConf := s.dbConf.Load().(DbConfig)
 	s.gridNum = dbConf.GridNum
 	s.gridSize = dbConf.GridSize
@@ -318,6 +289,9 @@ func (s *Server) shutdown() {
 }
 
 func (s *Server) ReceivedOrdersDataCallback(rspMsg []byte) error {
+	if string(rspMsg) == "pong" {
+		return nil
+	}
 	res := new(okex.WSOrdersResponse)
 	err := okex.JsonBytes2Struct(rspMsg, res)
 	if err != nil {
@@ -458,6 +432,8 @@ func (s *Server) CancelAllOrders() {
 func (s *Server) Stop() error {
 	s.CancelAllOrders()
 	atomic.StoreUint64(&s.status, 0)
+	s.wsClient.UnSubscribe(okex.CHNL_OEDERS, okex.SPOT)
+	s.wsClient.Stop()
 	return nil
 }
 

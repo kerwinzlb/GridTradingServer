@@ -61,12 +61,12 @@ func (a *OKWSAgent) Start() error {
 	return nil
 }
 
-func (a *OKWSAgent) Subscribe(channel, instType string) error {
+func (a *OKWSAgent) Subscribe(channel, instType, instId string) error {
 	a.processMut.Lock()
 	defer a.processMut.Unlock()
 
 	// st := SubscriptionTopic{channel, filter}
-	bo, err := subscribeOp(channel, instType)
+	bo, err := subscribeOp(channel, instType, instId)
 	if err != nil {
 		return err
 	}

@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"sort"
 	"syscall"
-	"time"
 
 	"github.com/kerwinzlb/GridTradingServer/log"
 	"github.com/kerwinzlb/GridTradingServer/okex-sdk-api"
@@ -70,8 +69,6 @@ func gridServer(ctx *cli.Context) {
 	}
 	log.Info("New success")
 	go waitToExit(gridServer)
-	go gridServer.WsRecvLoop()
-	time.Sleep(5 * time.Second)
 	err = gridServer.Start()
 	if err != nil {
 		log.Errorf("Start error:%v\n", err)
