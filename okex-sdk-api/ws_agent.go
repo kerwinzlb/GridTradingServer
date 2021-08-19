@@ -128,12 +128,9 @@ func (a *OKWSAgent) Stop() error {
 
 func (a *OKWSAgent) ping() {
 	msg := "ping"
-	// log.Debugf("Send Msg: %s", msg)
 	err := a.conn.WriteMessage(websocket.TextMessage, []byte(msg))
 	if err != nil {
 		log.Error("ping() WriteMessage", "err", err)
-		a.Stop()
-		a.restart()
 	}
 }
 
@@ -156,10 +153,14 @@ func (a *OKWSAgent) work() {
 
 	for {
 		select {
+		case <-a.stopCh:
+			return
 		case <-pingTic.C:
+			pingTic.Stop()
 			a.ping()
 			timeoutTic = time.NewTicker(5 * time.Second)
 		case <-timeoutTic.C:
+			timeoutTic.Stop()
 			log.Error("work() timeoutTic trigger, Websocket to restart!")
 			a.Stop()
 			a.restart()
@@ -167,9 +168,6 @@ func (a *OKWSAgent) work() {
 		case <-a.wCh:
 			pingTic = time.NewTicker(10 * time.Second)
 			timeoutTic.Stop()
-		case <-a.stopCh:
-			return
-
 		}
 	}
 }
@@ -191,6 +189,7 @@ func (a *OKWSAgent) receive() {
 		_, message, err := a.conn.ReadMessage()
 		if err != nil {
 			log.Error("receive() ReadMessage", "message", message, "err", err)
+			time.Sleep(3 * time.Second)
 			continue
 		}
 		a.wCh <- struct{}{}
