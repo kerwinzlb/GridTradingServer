@@ -110,9 +110,9 @@ func init() {
  * if '_logs' directory not exists.
  */
 func initLog(ctx *cli.Context) error {
+	absLogPath, _ := filepath.Abs("./_logs")
 	instId := ctx.GlobalString(utils.InstIdFlag.Name)
-	absLogPath, _ := filepath.Abs("./" + instId + "/_logs")
-	absLogPath = absLogPath + "/gridServer"
+	absLogPath = absLogPath + "/gridServer-" + instId
 	if err := os.MkdirAll(filepath.Dir(absLogPath), os.ModePerm); err != nil {
 		fmt.Errorf("Error %v in create %s", err, absLogPath)
 		return err
